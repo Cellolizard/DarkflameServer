@@ -30,5 +30,8 @@ endif()
 target_link_libraries(dGameTests ${COMMON_LIBRARIES} GTest::gtest_main
 	dGame dScripts dPhysics Detour Recast tinyxml2 dWorldServer dZoneManager dChatFilter dNavigation)
 
+target_compile_definitions(dGameTests PRIVATE
+	CDCLIENT_TEST_PATH="${CMAKE_SOURCE_DIR}/resServer/CDServer.sqlite")
+
 # Discover the tests
 gtest_discover_tests(dGameTests)

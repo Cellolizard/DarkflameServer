@@ -5,6 +5,7 @@
 #include "Entity.h"
 #include "InventoryComponent.h"
 #include "Inventory.h"
+#include "Item.h"
 #include "eInventoryType.h"
 #include "eReplicaComponentType.h"
 #include "CDItemComponentTable.h"

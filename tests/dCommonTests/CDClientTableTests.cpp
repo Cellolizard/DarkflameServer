@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 
+#include "dCommonVars.h"
+#include "CDClientDatabase.h"
 #include "CDClientManager.h"
 #include "CDMissionsTable.h"
 #include "CDItemComponentTable.h"
@@ -19,6 +21,14 @@
 class CDClientTableTest : public ::testing::Test {
 protected:
     void SetUp() override {
+#ifdef CDCLIENT_TEST_PATH
+        // Open the real CDServer.sqlite so the table fallback path
+        // (cache miss → DB query) can return defaults for IDs we never
+        // injected, instead of throwing "Database not open".
+        if (!CDClientDatabase::isConnected) {
+            CDClientDatabase::Connect(CDCLIENT_TEST_PATH);
+        }
+#endif
         // Clear all tables we use so each test starts from a clean slate.
         CDClientManager::GetEntriesMutable<CDMissionsTable>().clear();
         CDClientManager::GetEntriesMutable<CDItemComponentTable>().clear();

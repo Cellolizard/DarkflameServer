@@ -4,6 +4,7 @@
 #include "Game.h"
 #include "Logger.h"
 #include "dServer.h"
+#include "CDClientDatabase.h"
 #include "CDClientManager.h"
 #include "EntityInfo.h"
 #include "EntityManager.h"
@@ -41,6 +42,14 @@ protected:
 		Game::zoneManager = new dZoneManager();
 		Game::zoneManager->LoadZone(LWOZONEID(1, 0, 0));
 		Database::_setDatabase(new TestSQLDatabase()); // this new is managed by the Database
+
+#ifdef CDCLIENT_TEST_PATH
+		// Open the real CDServer.sqlite so component constructors that issue
+		// CDClientDatabase::CreatePreppedStmt(...) can query against it.
+		if (!CDClientDatabase::isConnected) {
+			CDClientDatabase::Connect(CDCLIENT_TEST_PATH);
+		}
+#endif
 
 		// Create a CDClientManager instance and load from defaults
 		CDClientManager::LoadValuesFromDefaults();
