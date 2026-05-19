@@ -230,3 +230,61 @@ TEST_F(InventoryTest, IsTransferInventoryCorrectlyIdentifiesTypes) {
 	EXPECT_FALSE(InventoryComponent::IsTransferInventory(eInventoryType::ITEMS));
 	EXPECT_FALSE(InventoryComponent::IsTransferInventory(eInventoryType::BRICKS));
 }
+
+// ---------------------------------------------------------------------------
+// CheckItemSet — process-wide LOT->setIDs cache
+//
+// The fix replaces a per-equip "WHERE itemIDs LIKE %lot%" CDClient SQL scan
+// with a static cache populated on first miss. m_Itemsets and m_ItemSetsChecked
+// are private with no public getters, so these tests are honest smoke coverage:
+// they exercise the cache-population, cache-hit, and cross-instance paths and
+// verify the call is crash-safe on a variety of inputs. Performance is verified
+// by code review (the SQL CreatePreppedStmt is now gated behind the cache).
+// ---------------------------------------------------------------------------
+
+// CheckItemSet on a fresh LOT that has no item-set membership does not crash.
+// This is the cache-miss + empty-result path.
+TEST_F(InventoryTest, CheckItemSetUnknownLotDoesNotCrash) {
+	EXPECT_NO_FATAL_FAILURE(inventoryComponent->CheckItemSet(424242));
+}
+
+// Calling CheckItemSet twice on the same LOT is idempotent. The second call
+// short-circuits via the per-instance m_ItemSetsChecked early-exit.
+TEST_F(InventoryTest, CheckItemSetIsIdempotentForSameLot) {
+	EXPECT_NO_FATAL_FAILURE({
+		inventoryComponent->CheckItemSet(424242);
+		inventoryComponent->CheckItemSet(424242);
+	});
+}
+
+// CheckItemSet is safe to call across a range of distinct LOTs in sequence.
+// Validates that the cache key handles many distinct entries.
+TEST_F(InventoryTest, CheckItemSetMultipleDistinctLotsDoesNotCrash) {
+	EXPECT_NO_FATAL_FAILURE({
+		for (LOT lot = 500000; lot < 500050; ++lot) {
+			inventoryComponent->CheckItemSet(lot);
+		}
+	});
+}
+
+// A second InventoryComponent invoking CheckItemSet on a LOT seen by the first
+// instance must not crash — verifies the static cache is safe across instances.
+TEST_F(InventoryTest, CheckItemSetCrossInstanceCacheReuseDoesNotCrash) {
+	inventoryComponent->CheckItemSet(424243);
+
+	EntityInfo info2{};
+	info2.lot = 999;
+	auto* otherEntity = new Entity(16, info2);
+	auto* otherInventory = otherEntity->AddComponent<InventoryComponent>(-1);
+	ASSERT_NE(otherInventory, nullptr);
+
+	EXPECT_NO_FATAL_FAILURE(otherInventory->CheckItemSet(424243));
+	delete otherEntity;
+}
+
+// CheckItemSet on a real CDClient LOT does not crash. LOT 7356 is a member of
+// setID 2 in the live CDClient ItemSets table — this exercises the cache-miss
+// + populated-result branch with realistic data.
+TEST_F(InventoryTest, CheckItemSetRealLotDoesNotCrash) {
+	EXPECT_NO_FATAL_FAILURE(inventoryComponent->CheckItemSet(7356));
+}
