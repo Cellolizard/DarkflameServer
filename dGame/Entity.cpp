@@ -218,9 +218,10 @@ void Entity::Initialize() {
 	const auto groupIDs = GetVarAsString(u"groupID");
 
 	if (!groupIDs.empty()) {
-		m_Groups = GeneralUtils::SplitString(groupIDs, ';');
-		if (!m_Groups.empty()) {
-			if (m_Groups.back().empty()) m_Groups.erase(m_Groups.end() - 1);
+		// Route initial groups through AddToGroup so EntityManager's byGroup
+		// index is populated. AddToGroup also de-duplicates.
+		for (const auto& group : GeneralUtils::SplitString(groupIDs, ';')) {
+			if (!group.empty()) AddToGroup(group);
 		}
 	}
 
@@ -2113,7 +2114,17 @@ void Entity::Resurrect() {
 void Entity::AddToGroup(const std::string& group) {
 	if (std::ranges::find(m_Groups, group) == m_Groups.end()) {
 		m_Groups.push_back(group);
+		// Keep EntityManager's byGroup index in sync. Game::entityManager may be
+		// null in test harnesses that exercise Entity without a full game setup;
+		// guard accordingly.
+		if (Game::entityManager) Game::entityManager->RegisterGroupAdded(this, group);
 	}
+}
+
+void Entity::NotifyComponentAdded(eReplicaComponentType componentId) {
+	// Called from AddComponent<T> when a new component slot is created.
+	// Game::entityManager may be null in test harnesses; guard accordingly.
+	if (Game::entityManager) Game::entityManager->RegisterComponentAdded(this, componentId);
 }
 
 void Entity::RetroactiveVaultSize() const {

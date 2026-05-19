@@ -3,6 +3,7 @@
 
 #include <map>
 #include <stack>
+#include <string>
 #include <vector>
 #include <unordered_map>
 
@@ -86,6 +87,16 @@ public:
 	// Messaging
 	bool SendMessage(GameMessages::GameMsg& msg) const;
 
+	// Index maintenance hooks called by Entity. These keep the byComponent /
+	// byGroup / byLOT indexes in sync with entity lifecycle and runtime mutation.
+	// Idempotent: re-registering the same (entity, key) pair is safe but wasteful;
+	// the callers (Entity::AddComponent, Entity::AddToGroup) already short-circuit
+	// duplicate adds before calling these.
+	void RegisterComponentAdded(Entity* entity, eReplicaComponentType componentType);
+	void RegisterGroupAdded(Entity* entity, const std::string& group);
+	void RegisterLOT(Entity* entity, LOT lot);
+	void UnregisterEntity(Entity* entity);
+
 private:
 	void ReloadConfig();
 	void SerializeEntities();
@@ -96,6 +107,16 @@ private:
 	static std::vector<LOT> m_GhostingExcludedLOTs;
 
 	std::unordered_map<LWOOBJID, Entity*> m_Entities;
+
+	// Reverse indexes maintained by Register*/UnregisterEntity. They turn the
+	// three "scan every entity" lookups (GetEntitiesByComponent / InGroup / ByLOT)
+	// into O(1) map probes followed by an O(k) result copy, where k is the bucket size.
+	// Buckets may briefly contain dangling pointers if an entity is destroyed without
+	// UnregisterEntity being called; UnregisterEntity is the canonical cleanup hook.
+	std::unordered_map<eReplicaComponentType, std::vector<Entity*>> m_EntitiesByComponent;
+	std::unordered_map<std::string, std::vector<Entity*>> m_EntitiesByGroup;
+	std::unordered_map<LOT, std::vector<Entity*>> m_EntitiesByLOT;
+
 	std::vector<LWOOBJID> m_EntitiesToKill;
 	std::vector<LWOOBJID> m_EntitiesToDelete;
 	std::vector<LWOOBJID> m_EntitiesToSerialize;
