@@ -158,6 +158,11 @@ Entity* EntityManager::CreateEntity(EntityInfo info, User* user, Entity* parentE
 	// Add the entity to the entity map
 	m_Entities.insert_or_assign(id, entity);
 
+	// LOT is fixed at construction (set in Entity ctor from EntityInfo.lot) and
+	// never changes, so register here. Components and groups have already been
+	// registered during entity->Initialize() via the AddComponent / AddToGroup hooks.
+	RegisterLOT(entity, entity->GetLOT());
+
 	// Set the zone control entity if the entity is a zone control object, this should only happen once
 	if (controller) {
 		m_ZoneControlEntity = entity;
@@ -257,6 +262,10 @@ void EntityManager::DeleteEntities() {
 			auto networkIdToErase = entityToDelete->GetNetworkId();
 			const auto& ghostingToDelete = std::find(m_EntitiesToGhost.begin(), m_EntitiesToGhost.end(), entityToDelete);
 
+			// Drop the entity from byComponent/byGroup/byLOT before deletion so
+			// no dangling pointers remain in those vectors.
+			UnregisterEntity(entityToDelete);
+
 			delete entityToDelete;
 
 			entityToDelete = nullptr;
@@ -293,40 +302,29 @@ Entity* EntityManager::GetEntity(const LWOOBJID& objectId) const {
 }
 
 std::vector<Entity*> EntityManager::GetEntitiesInGroup(const std::string& group) {
-	std::vector<Entity*> entitiesInGroup;
-	for (auto* entity : m_Entities | std::views::values) {
-		for (const auto& entityGroup : entity->GetGroups()) {
-			if (entityGroup == group) {
-				entitiesInGroup.push_back(entity);
-			}
-		}
-	}
-
-	return entitiesInGroup;
+	const auto it = m_EntitiesByGroup.find(group);
+	if (it == m_EntitiesByGroup.end()) return {};
+	return it->second;
 }
 
 std::vector<Entity*> EntityManager::GetEntitiesByComponent(const eReplicaComponentType componentType) const {
-	std::vector<Entity*> withComp;
-	if (componentType != eReplicaComponentType::INVALID) {
-		for (auto* entity : m_Entities | std::views::values) {
-			if (!entity->HasComponent(componentType)) continue;
-
-			withComp.push_back(entity);
-		}
-	} else {
-		for (auto* const entity : m_Entities | std::views::values) withComp.push_back(entity);
+	// INVALID is a sentinel meaning "every entity" (preserves prior behavior).
+	if (componentType == eReplicaComponentType::INVALID) {
+		std::vector<Entity*> all;
+		all.reserve(m_Entities.size());
+		for (auto* const entity : m_Entities | std::views::values) all.push_back(entity);
+		return all;
 	}
-	return withComp;
+
+	const auto it = m_EntitiesByComponent.find(componentType);
+	if (it == m_EntitiesByComponent.end()) return {};
+	return it->second;
 }
 
 std::vector<Entity*> EntityManager::GetEntitiesByLOT(const LOT& lot) const {
-	std::vector<Entity*> entities;
-
-	for (auto* entity : m_Entities | std::views::values) {
-		if (entity->GetLOT() == lot) entities.push_back(entity);
-	}
-
-	return entities;
+	const auto it = m_EntitiesByLOT.find(lot);
+	if (it == m_EntitiesByLOT.end()) return {};
+	return it->second;
 }
 
 std::vector<Entity*> EntityManager::GetEntitiesByProximity(NiPoint3 reference, float radius) const {
@@ -337,6 +335,48 @@ std::vector<Entity*> EntityManager::GetEntitiesByProximity(NiPoint3 reference, f
 		}
 	}
 	return entities;
+}
+
+void EntityManager::RegisterComponentAdded(Entity* entity, eReplicaComponentType componentType) {
+	if (!entity) return;
+	m_EntitiesByComponent[componentType].push_back(entity);
+}
+
+void EntityManager::RegisterGroupAdded(Entity* entity, const std::string& group) {
+	if (!entity || group.empty()) return;
+	m_EntitiesByGroup[group].push_back(entity);
+}
+
+void EntityManager::RegisterLOT(Entity* entity, LOT lot) {
+	if (!entity) return;
+	m_EntitiesByLOT[lot].push_back(entity);
+}
+
+void EntityManager::UnregisterEntity(Entity* entity) {
+	if (!entity) return;
+
+	// Remove from every component bucket the entity participates in.
+	for (const auto& [componentType, _] : entity->GetComponents()) {
+		auto it = m_EntitiesByComponent.find(componentType);
+		if (it == m_EntitiesByComponent.end()) continue;
+		auto& bucket = it->second;
+		bucket.erase(std::remove(bucket.begin(), bucket.end(), entity), bucket.end());
+	}
+
+	// Remove from every group bucket the entity belongs to.
+	for (const auto& group : entity->GetGroups()) {
+		auto it = m_EntitiesByGroup.find(group);
+		if (it == m_EntitiesByGroup.end()) continue;
+		auto& bucket = it->second;
+		bucket.erase(std::remove(bucket.begin(), bucket.end(), entity), bucket.end());
+	}
+
+	// Remove from the LOT bucket.
+	auto lotIt = m_EntitiesByLOT.find(entity->GetLOT());
+	if (lotIt != m_EntitiesByLOT.end()) {
+		auto& bucket = lotIt->second;
+		bucket.erase(std::remove(bucket.begin(), bucket.end(), entity), bucket.end());
+	}
 }
 
 

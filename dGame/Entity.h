@@ -85,6 +85,10 @@ public:
 
 	Entity* GetParentEntity() const { return m_ParentEntity; }
 
+	// Returns a mutable reference for legacy reasons. Direct mutation here
+	// bypasses Game::entityManager's m_EntitiesByGroup index — prefer AddToGroup
+	// for additions so the index stays in sync. Removals via this reference are
+	// currently unsupported by the index (no use-case in the codebase as of 2026-05).
 	std::vector<std::string>& GetGroups() { return m_Groups; };
 
 	Spawner* GetSpawner() const { return m_Spawner; }
@@ -174,6 +178,12 @@ public:
 	bool HasComponent(eReplicaComponentType componentId) const;
 
 	void AddComponent(eReplicaComponentType componentId, Component* component);
+
+	// Internal: notifies EntityManager that a new component slot was created on
+	// this entity. Defined in Entity.cpp to avoid pulling EntityManager.h into
+	// this header. Called only when AddComponent<T> creates a new component (not
+	// when it placement-news over an existing slot).
+	void NotifyComponentAdded(eReplicaComponentType componentId);
 
 	bool MsgRequestServerObjectInfo(GameMessages::GameMsg& msg);
 	bool MsgDropClientLoot(GameMessages::GameMsg& msg);
@@ -589,11 +599,14 @@ inline ComponentType* Entity::AddComponent(VaArgs... args) {
 	// If it doesn't exist, create it and forward the arguments to the constructor
 	if (!componentToReturn) {
 		componentToReturn = new ComponentType(this, std::forward<VaArgs>(args)...);
+		// New slot — register in EntityManager's byComponent index.
+		NotifyComponentAdded(ComponentType::ComponentType);
 	} else {
 		// In this case the block is already allocated and ready for use
 		// so we use a placement new to construct the component again as was requested by the caller.
 		// Placement new means we already have memory allocated for the object, so this just calls its constructor again.
 		// This is useful for when we want to create a new object in the same memory location as an old one.
+		// No index update needed: the entity is already registered for this component type.
 		componentToReturn->~Component();
 		new(componentToReturn) ComponentType(this, std::forward<VaArgs>(args)...);
 	}
