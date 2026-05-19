@@ -151,12 +151,14 @@ void SkillComponent::Update(const float deltaTime) {
 		for (const auto& pair : this->m_managedBehaviors) pair.second->UpdatePlayerSyncs(deltaTime);
 	}
 
-	std::multimap<uint32_t, BehaviorContext*> keep{};
-
-	for (const auto& pair : this->m_managedBehaviors) {
-		auto* context = pair.second;
+	// Iterate in place and erase dead entries with the multimap's node-erase
+	// API. Avoids the per-frame allocation of a temporary multimap that the
+	// previous "build keep{}, then assign back" pattern required.
+	for (auto it = m_managedBehaviors.begin(); it != m_managedBehaviors.end(); ) {
+		auto* context = it->second;
 
 		if (context == nullptr) {
+			it = m_managedBehaviors.erase(it);
 			continue;
 		}
 
@@ -173,26 +175,20 @@ void SkillComponent::Update(const float deltaTime) {
 			for (const auto& projectile : this->m_managedProjectiles) {
 				if (projectile.context == context) {
 					any = true;
-
 					break;
 				}
 			}
 
 			if (!any) {
 				context->Reset();
-
 				delete context;
-
-				context = nullptr;
-
+				it = m_managedBehaviors.erase(it);
 				continue;
 			}
 		}
 
-		keep.insert({ pair.first, context });
+		++it;
 	}
-
-	this->m_managedBehaviors = keep;
 }
 
 void SkillComponent::Reset() {
