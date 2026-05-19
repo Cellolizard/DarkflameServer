@@ -50,9 +50,7 @@ void ChatPackets::SendChatMessage(const SystemAddress& sysAddr, char chatChannel
 	bitStream.Write<uint16_t>(0);
 	bitStream.Write<char>(0);
 
-	for (uint32_t i = 0; i < message.size(); ++i) {
-		bitStream.Write<uint16_t>(message[i]);
-	}
+	bitStream.Write(reinterpret_cast<const char*>(message.data()), message.size() * sizeof(char16_t));
 	bitStream.Write<uint16_t>(0);
 
 	SEND_PACKET_BROADCAST;
@@ -76,9 +74,7 @@ void ChatPackets::SendSystemMessage(const SystemAddress& sysAddr, const std::u16
 	bitStream.Write<uint16_t>(0);
 	bitStream.Write<char>(0);
 
-	for (uint32_t i = 0; i < message.size(); ++i) {
-		bitStream.Write<uint16_t>(message[i]);
-	}
+	bitStream.Write(reinterpret_cast<const char*>(message.data()), message.size() * sizeof(char16_t));
 
 	bitStream.Write<uint16_t>(0);
 
