@@ -11,6 +11,9 @@ set(DCOMMONTEST_SOURCES
 	"TestLUWString.cpp"
 	"dCommonDependencies.cpp"
 	"LxfmlTests.cpp"
+	"CDClientTableTests.cpp"
+	"ConfigTests.cpp"
+	"BitStreamExtendedTests.cpp"
 )
 
 add_subdirectory(dEnumsTests)
