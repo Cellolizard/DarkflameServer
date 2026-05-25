@@ -33,5 +33,12 @@ target_link_libraries(dGameTests ${COMMON_LIBRARIES} GTest::gtest_main
 target_compile_definitions(dGameTests PRIVATE
 	CDCLIENT_TEST_PATH="${CMAKE_SOURCE_DIR}/resServer/CDServer.sqlite")
 
-# Discover the tests
-gtest_discover_tests(dGameTests)
+# Discover the tests. DISCOVERY_MODE PRE_TEST defers gtest's enumeration step
+# from build time to ctest time. Without this, a sanitizer build (the `asan`
+# preset) fails because ASAN's startup overhead pushes the build-time test
+# enumeration past gtest_discover_tests's timeout, and make then deletes the
+# (successfully linked) binary as a casualty of the discovery-step failure.
+# DISCOVERY_TIMEOUT raised from the 5s default for the same reason.
+gtest_discover_tests(dGameTests
+	DISCOVERY_MODE PRE_TEST
+	DISCOVERY_TIMEOUT 60)
