@@ -32,7 +32,11 @@
 #include "StringifiedEnum.h"
 
 namespace {
-	std::set<uint32_t> g_TestedMissions = { 773, 774, 775, 776, 777 }; // TODO Figure out why these missions are broken sometimes
+	// Debug-logging gate: MissionTask emits extra LOG() calls when processing
+	// missions whose ID is in this set. Used to focus diagnostic output on a
+	// handful of missions during development without flooding the log with every
+	// mission's per-task progression. Not a list of broken missions.
+	std::set<uint32_t> g_TestedMissions = { 773, 774, 775, 776, 777 };
 }
 
 Mission::Mission(MissionComponent* missionComponent, const uint32_t missionId) {
