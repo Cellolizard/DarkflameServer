@@ -35,6 +35,32 @@
 			}
 		},
 		{
+			"name": "asan-config",
+			"hidden": true,
+			"description": "AddressSanitizer + UndefinedBehaviorSanitizer flags. Debug build, no frame pointer omission. GCC/Clang only; do not use with MSVC.",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug",
+				"CMAKE_C_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer",
+				"CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer",
+				"CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined",
+				"CMAKE_SHARED_LINKER_FLAGS": "-fsanitize=address,undefined",
+				"CMAKE_MODULE_LINKER_FLAGS": "-fsanitize=address,undefined"
+			}
+		},
+		{
+			"name": "coverage-config",
+			"hidden": true,
+			"description": "Code coverage flags (--coverage). Output is gcov-compatible on both GCC and Clang. GCC/Clang only.",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug",
+				"CMAKE_C_FLAGS": "--coverage",
+				"CMAKE_CXX_FLAGS": "--coverage",
+				"CMAKE_EXE_LINKER_FLAGS": "--coverage",
+				"CMAKE_SHARED_LINKER_FLAGS": "--coverage",
+				"CMAKE_MODULE_LINKER_FLAGS": "--coverage"
+			}
+		},
+		{
 			"name": "clang-config",
 			"hidden": true,
 			"toolchainFile": "${sourceDir}/cmake/toolchains/linux-clang.cmake"
@@ -162,6 +188,36 @@
 				"rhs": "Darwin"
 			},
 			"binaryDir": "${sourceDir}/build/macos"
+		},
+		{
+			"name": "asan",
+			"inherits": [
+				"default",
+				"asan-config"
+			],
+			"displayName": "[ASAN+UBSAN] Sanitizer build",
+			"description": "Debug build with AddressSanitizer and UndefinedBehaviorSanitizer enabled. Intended for Linux/CI use. Build works on macOS+AppleClang but test discovery via ctest currently hangs there due to heavy static-init interaction with ASAN on Apple Silicon; on macOS, invoke test binaries directly with --gtest_filter for targeted runs.",
+			"binaryDir": "${sourceDir}/build/asan",
+			"condition": {
+				"type": "notEquals",
+				"lhs": "${hostSystemName}",
+				"rhs": "Windows"
+			}
+		},
+		{
+			"name": "coverage",
+			"inherits": [
+				"default",
+				"coverage-config"
+			],
+			"displayName": "[Coverage] Code coverage build",
+			"description": "Debug build with gcov-compatible coverage instrumentation. Linux/macOS only.",
+			"binaryDir": "${sourceDir}/build/coverage",
+			"condition": {
+				"type": "notEquals",
+				"lhs": "${hostSystemName}",
+				"rhs": "Windows"
+			}
 		}
 	],
 	"buildPresets": [
@@ -267,6 +323,22 @@
 			"displayName": "[Release] MacOS",
 			"description": "This preset is used to build in release mode on MacOS",
 			"configuration": "Release"
+		},
+		{
+			"name": "asan",
+			"inherits": "default",
+			"configurePreset": "asan",
+			"displayName": "[ASAN+UBSAN] Sanitizer build",
+			"description": "Build with AddressSanitizer and UndefinedBehaviorSanitizer enabled",
+			"configuration": "Debug"
+		},
+		{
+			"name": "coverage",
+			"inherits": "default",
+			"configurePreset": "coverage",
+			"displayName": "[Coverage] Code coverage build",
+			"description": "Build with coverage instrumentation enabled",
+			"configuration": "Debug"
 		}
 	],
 	"testPresets": [
@@ -386,6 +458,22 @@
 			"displayName": "[Release] MacOS",
 			"description": "Runs all tests on a MacOS configuration",
 			"configuration": "Release"
+		},
+		{
+			"name": "asan",
+			"inherits": "default",
+			"configurePreset": "asan",
+			"displayName": "[ASAN+UBSAN] Sanitizer build",
+			"description": "Runs all tests under AddressSanitizer + UndefinedBehaviorSanitizer",
+			"configuration": "Debug"
+		},
+		{
+			"name": "coverage",
+			"inherits": "default",
+			"configurePreset": "coverage",
+			"displayName": "[Coverage] Code coverage build",
+			"description": "Runs all tests with coverage instrumentation",
+			"configuration": "Debug"
 		}
 	],
 	"workflowPresets": [
