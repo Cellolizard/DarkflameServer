@@ -13,6 +13,11 @@
 #include "Brick.h"
 #include "MessageType/Game.h"
 #include "eGameMasterLevel.h"
+// Full include (not forward decl) because some message structs hold
+// std::vector<std::unique_ptr<LDFBaseData>>. Since C++23 made ~unique_ptr()
+// constexpr, the destructor is instantiated eagerly at the struct definition
+// site, requiring the pointee type to be complete here.
+#include "LDFFormat.h"
 
 class AMFBaseValue;
 class AMFArrayValue;
@@ -22,7 +27,6 @@ class User;
 class Leaderboard;
 class PropertySelectQueryProperty;
 class TradeItem;
-class LDFBaseData;
 
 enum class eAnimationFlags : uint32_t;
 
