@@ -61,6 +61,5 @@ void PropertyTeleportBehavior::Handle(BehaviorContext* context, RakNet::BitStrea
 }
 
 void PropertyTeleportBehavior::Load() {
-	this->m_CancelIfInteracting = GetBoolean("cancel_if_interacting"); // TODO unused
 	this->m_MapId = LWOMAPID(GetInt("mapID"));
 }
