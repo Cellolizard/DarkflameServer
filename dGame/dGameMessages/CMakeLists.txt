@@ -1,6 +1,7 @@
 set(DGAME_DGAMEMESSAGES_SOURCES
 	"GameMessageHandler.cpp"
 	"GameMessages.cpp"
+	"MessageHandlerRegistry.cpp"
 	"PropertyDataMessage.cpp"
 	"PropertySelectQueryProperty.cpp")
 
