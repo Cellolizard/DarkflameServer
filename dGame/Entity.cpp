@@ -118,7 +118,8 @@ Entity::Entity(const LWOOBJID& objectID, const EntityInfo& info, User* parentUse
 	m_ChildEntities = {};
 	m_ScheduleKiller = nullptr;
 	m_TargetsInPhantom = {};
-	m_Components = {};
+	m_ComponentArray = {};
+	m_DestroyableComponent = nullptr;
 	m_DieCallbacks = {};
 	m_PhantomCollisionCallbacks = {};
 	m_IsParentChildDirty = true;
@@ -177,11 +178,15 @@ Entity::~Entity() {
 	CancelAllTimers();
 	CancelCallbackTimers();
 
-	for (auto& component : m_Components | std::views::values) {
+	for (auto*& component : m_ComponentArray) {
 		if (component) {
 			delete component;
 			component = nullptr;
 		}
+	}
+	if (m_DestroyableComponent) {
+		delete m_DestroyableComponent;
+		m_DestroyableComponent = nullptr;
 	}
 
 	for (auto* const child : m_ChildEntities) {
@@ -828,7 +833,7 @@ void Entity::Initialize() {
 
 	if (!m_Character && Game::entityManager->GetGhostingEnabled()) {
 		// Don't ghost what is likely large scene elements
-		if (HasComponent(eReplicaComponentType::SIMPLE_PHYSICS) && HasComponent(eReplicaComponentType::RENDER) && (m_Components.size() == 2 || (HasComponent(eReplicaComponentType::TRIGGER) && m_Components.size() == 3))) {
+		if (HasComponent(eReplicaComponentType::SIMPLE_PHYSICS) && HasComponent(eReplicaComponentType::RENDER) && (GetComponentCount() == 2 || (HasComponent(eReplicaComponentType::TRIGGER) && GetComponentCount() == 3))) {
 			goto no_ghosting;
 		}
 
@@ -885,12 +890,38 @@ bool Entity::operator!=(const Entity& other) const {
 }
 
 Component* Entity::GetComponent(eReplicaComponentType componentID) const {
-	const auto& index = m_Components.find(componentID);
-	return index != m_Components.end() ? index->second : nullptr;
+	auto* const* slot = ComponentSlot(componentID);
+	return slot ? *slot : nullptr;
 }
 
 bool Entity::HasComponent(const eReplicaComponentType componentId) const {
-	return m_Components.contains(componentId);
+	auto* const* slot = ComponentSlot(componentId);
+	return slot && *slot;
+}
+
+Component** Entity::ComponentSlot(const eReplicaComponentType componentId) {
+	if (componentId == eReplicaComponentType::DESTROYABLE) return &m_DestroyableComponent;
+	const auto idx = static_cast<uint32_t>(componentId);
+	if (idx < kDenseComponentTypeCount) return &m_ComponentArray[idx];
+	return nullptr;
+}
+
+Component* const* Entity::ComponentSlot(const eReplicaComponentType componentId) const {
+	if (componentId == eReplicaComponentType::DESTROYABLE) return &m_DestroyableComponent;
+	const auto idx = static_cast<uint32_t>(componentId);
+	if (idx < kDenseComponentTypeCount) return &m_ComponentArray[idx];
+	return nullptr;
+}
+
+size_t Entity::GetComponentCount() const {
+	size_t count = 0;
+	for (const auto* c : m_ComponentArray) if (c) ++count;
+	if (m_DestroyableComponent) ++count;
+	return count;
+}
+
+void Entity::DestructComponentInPlace(Component* component) {
+	component->~Component();
 }
 
 void Entity::Subscribe(LWOOBJID scriptObjId, CppScripts::Script* scriptToAdd, const std::string& notificationName) {
@@ -1285,11 +1316,9 @@ void Entity::UpdateXMLDoc(tinyxml2::XMLDocument& doc) {
 	//This function should only ever be called from within Character, meaning doc should always exist when this is called.
 	//Naturally, we don't include any non-player components in this update function.
 
-	for (const auto& component : m_Components | std::views::values) {
-		if (!component) continue;
-
+	ForEachComponent([&doc](Component* component) {
 		component->UpdateXml(doc);
-	}
+	});
 }
 
 void Entity::Update(const float deltaTime) {
@@ -1364,11 +1393,9 @@ void Entity::Update(const float deltaTime) {
 
 	GetScript()->OnUpdate(this);
 
-	for (const auto& component : m_Components | std::views::values) {
-		if (!component) continue;
-
+	ForEachComponent([deltaTime](Component* component) {
 		component->Update(deltaTime);
-	}
+	});
 
 	if (m_ShouldDestroyAfterUpdate) {
 		Game::entityManager->DestroyEntity(this->GetObjectID());
@@ -1475,11 +1502,9 @@ void Entity::OnUse(Entity* originator) {
 
 	GetScript()->OnUse(this, originator);
 
-	for (const auto& component : m_Components | std::views::values) {
-		if (!component) continue;
-
+	ForEachComponent([originator](Component* component) {
 		component->OnUse(originator);
-	}
+	});
 }
 
 void Entity::OnHitOrHealResult(Entity* attacker, int32_t damage) {
@@ -2238,13 +2263,14 @@ void Entity::SetRespawnRot(const NiQuaternion& rotation) const {
 }
 
 int32_t Entity::GetCollisionGroup() const {
-	for (const auto* component : m_Components | std::views::values) {
+	for (const auto* component : m_ComponentArray) {
+		if (!component) continue;
 		auto* compToCheck = dynamic_cast<const PhysicsComponent*>(component);
 		if (compToCheck) {
 			return compToCheck->GetCollisionGroup();
 		}
 	}
-
+	// DESTROYABLE is not a PhysicsComponent subtype; no need to check it.
 	return 0;
 }
 
@@ -2283,9 +2309,9 @@ bool Entity::MsgRequestServerObjectInfo(GameMessages::GameMsg& msg) {
 	objectInfo.PushDebug<AMFStringValue>("Spawner's Object ID") = std::to_string(GetSpawnerID());
 
 	auto& componentDetails = objectInfo.PushDebug("Component Information");
-	for (const auto [id, component] : m_Components) {
+	ForEachComponentType([&componentDetails](eReplicaComponentType id) {
 		componentDetails.PushDebug(StringifiedEnum::ToString(id));
-	}
+	});
 
 	auto& configData = objectInfo.PushDebug("Config Data");
 	for (const auto config : m_Settings) {

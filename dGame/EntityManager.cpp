@@ -356,12 +356,12 @@ void EntityManager::UnregisterEntity(Entity* entity) {
 	if (!entity) return;
 
 	// Remove from every component bucket the entity participates in.
-	for (const auto& [componentType, _] : entity->GetComponents()) {
+	entity->ForEachComponentType([this, entity](eReplicaComponentType componentType) {
 		auto it = m_EntitiesByComponent.find(componentType);
-		if (it == m_EntitiesByComponent.end()) continue;
+		if (it == m_EntitiesByComponent.end()) return;
 		auto& bucket = it->second;
 		bucket.erase(std::remove(bucket.begin(), bucket.end(), entity), bucket.end());
-	}
+	});
 
 	// Remove from every group bucket the entity belongs to.
 	for (const auto& group : entity->GetGroups()) {
