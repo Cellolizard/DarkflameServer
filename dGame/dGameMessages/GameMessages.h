@@ -650,7 +650,6 @@ namespace GameMessages {
 	void HandleNotifyServerLevelProcessingComplete(RakNet::BitStream& inStream, Entity* entity);
 	void HandlePickupCurrency(RakNet::BitStream& inStream, Entity* entity);
 	void HandleRequestDie(RakNet::BitStream& inStream, Entity* entity);
-	void HandleEquipItem(RakNet::BitStream& inStream, Entity* entity);
 	void HandleUnequipItem(RakNet::BitStream& inStream, Entity* entity);
 	void HandleRemoveItemFromInventory(RakNet::BitStream& inStream, Entity* entity, const SystemAddress& sysAddr);
 	void HandleMoveItemInInventory(RakNet::BitStream& inStream, Entity* entity);
