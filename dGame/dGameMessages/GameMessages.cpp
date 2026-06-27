@@ -5166,24 +5166,6 @@ void GameMessages::HandleRequestDie(RakNet::BitStream& inStream, Entity* entity)
 	inStream.Read(killerID);
 }
 
-void GameMessages::HandleEquipItem(RakNet::BitStream& inStream, Entity* entity) {
-	bool immediate;
-	LWOOBJID objectID;
-	inStream.Read(immediate);
-	inStream.Read(immediate); //twice?
-	inStream.Read(objectID);
-
-	InventoryComponent* inv = static_cast<InventoryComponent*>(entity->GetComponent(eReplicaComponentType::INVENTORY));
-	if (!inv) return;
-
-	Item* item = inv->FindItemById(objectID);
-	if (!item) return;
-
-	item->Equip();
-
-	Game::entityManager->SerializeEntity(entity);
-}
-
 void GameMessages::HandleUnequipItem(RakNet::BitStream& inStream, Entity* entity) {
 	bool immediate;
 	LWOOBJID objectID;
