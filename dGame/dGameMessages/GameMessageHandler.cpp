@@ -102,20 +102,6 @@ void GameMessageHandler::HandleMessage(RakNet::BitStream& inStream, const System
 		break;
 	}
 
-	case MessageType::Game::MOVE_ITEM_IN_INVENTORY: {
-		GameMessages::HandleMoveItemInInventory(inStream, entity);
-		break;
-	}
-
-	case MessageType::Game::REMOVE_ITEM_FROM_INVENTORY: {
-		GameMessages::HandleRemoveItemFromInventory(inStream, entity, sysAddr);
-		break;
-	}
-
-	case MessageType::Game::UN_EQUIP_INVENTORY:
-		GameMessages::HandleUnequipItem(inStream, entity);
-		break;
-
 	case MessageType::Game::RESPOND_TO_MISSION: {
 		GameMessages::HandleRespondToMission(inStream, entity);
 		break;

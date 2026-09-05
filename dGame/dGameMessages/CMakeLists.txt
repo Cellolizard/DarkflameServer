@@ -4,7 +4,10 @@ set(DGAME_DGAMEMESSAGES_SOURCES
 	"MessageHandlerRegistry.cpp"
 	"PropertyDataMessage.cpp"
 	"PropertySelectQueryProperty.cpp"
-	"MessageHandlers/Inventory/EquipInventory.cpp")
+	"MessageHandlers/Inventory/EquipInventory.cpp"
+	"MessageHandlers/Inventory/UnequipInventory.cpp"
+	"MessageHandlers/Inventory/MoveItemInInventory.cpp"
+	"MessageHandlers/Inventory/RemoveItemFromInventory.cpp")
 
 add_library(dGameMessages OBJECT ${DGAME_DGAMEMESSAGES_SOURCES})
 target_link_libraries(dGameMessages
