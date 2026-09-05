@@ -1,3 +1,8 @@
+> **RETIRED (2026-04-03 Claude dump).** Not current. Living map: [`00_INDEX.md`](00_INDEX.md) · [`STATUS.md`](STATUS.md).
+> File:line citations and the 6,445-line figure are frozen at analysis time (committed `aa2de8e8`, 2026-05-19).
+>
+> **Rot in this file:** “No centralized dispatcher” is false on this tip — `MessageHandlerRegistry` exists and dispatch tries it before the leftover ~108-case switch. Equip/Unequip/Move/Remove inventory handlers are extracted under `dGame/dGameMessages/MessageHandlers/Inventory/`. Entity component storage is already a flat array. `GameMessages.cpp` is 6287 lines here / 6469 on main. The 3-class `InventoryComponent` split has **not** happened.
+
 # DarkflameServer Refactoring Strategy
 
 ## 1. GameMessages.cpp Monolith Refactoring

@@ -1,3 +1,8 @@
+> **RETIRED (2026-04-03 Claude dump).** Not current. Living map: [`00_INDEX.md`](00_INDEX.md) · [`STATUS.md`](STATUS.md).
+> File:line citations are frozen at analysis time (committed `aa2de8e8`, 2026-05-19).
+>
+> **Critical falsehoods in this file:** The entire **Lua / Lua VM** section is false. `dScripts/` is compiled C++ (`CppScripts`); there is no in-tree Lua interpreter or `.lua` gameplay. C++ on this tip is **23** (main is still 20). RakNet is vendored 3.25 — SLikeNet is not a drop-in. Dockerfile on this tip is gcc:13, not 12.
+
 # DarkflameServer Technology Stack Analysis
 
 **Date:** 2026-04-03  

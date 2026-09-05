@@ -1,3 +1,8 @@
+> **RETIRED (2026-04-03 Claude dump).** Not current. Living map: [`00_INDEX.md`](00_INDEX.md) · [`STATUS.md`](STATUS.md).
+> File:line citations and toolchain notes are frozen at analysis time (committed `aa2de8e8`, 2026-05-19).
+>
+> **Rot in this file:** This tip builds as **C++23** with gcc:13 Dockerfile and extra ASan/coverage presets; `main` is still C++20 / gcc:12. Test tree on this tip is 33 `.cpp` files, not the April set. README CMake 3.25–3.31 vs CMake 4 workaround in `CMakeLists.txt` is a live CI/docs mismatch. Operator compose still pulls upstream GHCR.
+
 # DarkflameServer Development Workflow: Adding Game Content
 
 This document provides practical, step-by-step workflows for adding different content types to DarkflameServer. It assumes a development environment is set up with CMake, a C++ compiler, and access to the CDClient and game databases.

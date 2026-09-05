@@ -1,3 +1,8 @@
+> **RETIRED (2026-04-03 Claude dump).** Not current. Living map: [`00_INDEX.md`](00_INDEX.md) · [`STATUS.md`](STATUS.md).
+> **Needs Astra:** this file is bound to a Claude + MCP session (Blender, image-gen, SQLite MCP, “what Claude can do”). Do not follow it as an Astra/Codex/Grok-Build playbook.
+>
+> **Durable fact to keep:** there is still no LUZ/LVL writer; new zone geometry / static placement is blocked. CDClient SQL + C++ scripts + behaviors remain the content ceiling that is actually reachable. The rest of this file should be restated for the current tool stack or deleted.
+
 # Claude Code vs External Tools: Capabilities & MCP Opportunities
 
 This document defines exactly what Claude can accomplish for DarkflameServer development. It distinguishes three categories:

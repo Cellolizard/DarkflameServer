@@ -1,3 +1,8 @@
+> **RETIRED (2026-04-03 Claude dump).** Not current. Living map: [`00_INDEX.md`](00_INDEX.md) · [`STATUS.md`](STATUS.md).
+> This is a **full document**, not a placeholder (the old INDEX was wrong). FK notes are frozen at analysis time (committed `aa2de8e8`, 2026-05-19).
+>
+> **Rot in this file:** `script_name` → `.lua` on disk is false; server scripts are compiled C++. The LOT → ComponentsRegistry → component-table pattern is still the right mental model. Re-check headers under `dDatabase/CDClientDatabase/CDClientTables/` before treating a column as a live FK.
+
 # DarkflameServer Content Dependencies
 
 This document maps every significant foreign-key relationship across the CDClient tables that

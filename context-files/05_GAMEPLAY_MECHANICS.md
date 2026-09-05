@@ -1,3 +1,8 @@
+> **RETIRED (2026-04-03 Claude dump).** Not current. Living map: [`00_INDEX.md`](00_INDEX.md) · [`STATUS.md`](STATUS.md).
+> File:line citations are frozen at analysis time (committed `aa2de8e8`, 2026-05-19).
+>
+> **Rot in this file:** Later sections correctly say scripts are C++ `CppScripts::Script`. Hot-path claims (`GetEntitiesByComponent` O(n), per-frame skill multimap, ItemSet LIKE on every equip) are **false on this tip** (indexed lookup / in-place erase / process-wide cache landed). They remain true on `origin/main`. `GetEntitiesByProximity` is still O(n) on both. Dispatch on this tip goes through `MessageHandlerRegistry` before the leftover switch.
+
 # DarkflameServer Gameplay Mechanics
 
 ## 1. Server Architecture

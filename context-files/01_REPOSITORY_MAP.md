@@ -1,3 +1,8 @@
+> **RETIRED (2026-04-03 Claude dump).** Not current. Living map: [`00_INDEX.md`](00_INDEX.md) · [`STATUS.md`](STATUS.md).
+> File:line citations and counts are frozen at analysis time (committed `aa2de8e8`, 2026-05-19). The LU Dev stack on this branch has since landed several dump recommendations; they are **not** on `origin/main`.
+>
+> **Critical falsehoods in this file:** `dScripts/` is **not** a Lua system. Gameplay scripts are C++ (`CppScripts`). `ScriptComponent` does not execute Lua. There are no `.lua` sources in-tree. C++ standard on this tip is **23**, not 20. File counts have drifted (e.g. `dGame/` is 351 files here, not 341).
+
 # DarkflameServer Repository Map
 
 **Project:** LEGO Universe Private Server Emulator (Darkflame)  

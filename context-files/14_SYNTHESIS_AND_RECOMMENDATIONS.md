@@ -1,3 +1,8 @@
+> **RETIRED (2026-04-03 Claude dump).** Not current. Living map: [`00_INDEX.md`](00_INDEX.md) · [`STATUS.md`](STATUS.md).
+> **Do not execute Phase 1–3 from this file.** The live backlog is `/workspace/lu-status/project-bearing.md` §6.
+>
+> **Critical falsehoods in this file:** “Highest-impact thing to do today” (EntityManager index) and several other Phase-1 items **already landed on this stack**. `GameMessages.cpp` is not 6,445 lines. Migrations are not 0–23. Docs 10/11 were never placeholders. SLikeNet is not a small drop-in. C++23 / gcc:13 / sanitizer presets / MessageHandlerRegistry / inventory handler extract are already here (not on `main`). Characterization tests are started, not done.
+
 # DarkflameServer — Synthesis & Recommendations
 
 **Executive Investigation Report**  

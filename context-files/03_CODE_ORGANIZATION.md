@@ -1,3 +1,8 @@
+> **RETIRED (2026-04-03 Claude dump).** Not current. Living map: [`00_INDEX.md`](00_INDEX.md) · [`STATUS.md`](STATUS.md).
+> File:line citations and module file counts are frozen at analysis time (committed `aa2de8e8`, 2026-05-19).
+>
+> **Rot in this file:** File counts drifted (`dGame/` 341 → 351 on this tip). This file correctly calls `dScripts/` a C++ replacement for Lua — that part is still true. Component storage on this tip is a flat `Component*` array, not `unordered_map`. `MessageHandlerRegistry` exists; inventory handlers are extracted.
+
 # DarkflameServer Code Organization
 
 ## Overview

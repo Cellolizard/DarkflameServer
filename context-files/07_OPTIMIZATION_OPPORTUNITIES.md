@@ -1,3 +1,8 @@
+> **RETIRED (2026-04-03 Claude dump).** Not current. Living map: [`00_INDEX.md`](00_INDEX.md) · [`STATUS.md`](STATUS.md).
+> File:line citations are frozen at analysis time (committed `aa2de8e8`, 2026-05-19). Do not treat them as review comments.
+>
+> **Critical falsehoods in this file:** Header says C++ 14-17 (false). Pasted `GetEntitiesByComponent` is the **old linear scan**; on this tip that function is an index lookup and `EntityManager.cpp:308` is no longer that code. Absolute paths (`/Users/mitchell/Documents/repos/...`) are local to the original investigator. Indexed lookup, skill-update alloc, ItemSet cache, and BitStream bulk writes have **already landed on this stack**. Proximity scan and async DB have not.
+
 # DarkflameServer: Optimization Opportunities & Code Quality Issues
 
 **Analysis Date**: April 2026  

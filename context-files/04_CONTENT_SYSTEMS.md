@@ -1,3 +1,8 @@
+> **RETIRED (2026-04-03 Claude dump).** Not current. Living map: [`00_INDEX.md`](00_INDEX.md) · [`STATUS.md`](STATUS.md).
+> File:line citations are frozen at analysis time (committed `aa2de8e8`, 2026-05-19).
+>
+> **Rot in this file:** Zone-script paths described as `{zoneID}.lua` are historical client names; server scripts are C++ under `dScripts/`. LOT / CDClient load path is still the right orientation. New zone *geometry* is still blocked (no LUZ/LVL writer). Re-check table/column names against `dDatabase/CDClientDatabase/CDClientTables/` before generating SQL.
+
 # DarkflameServer Content Systems
 
 ## Overview

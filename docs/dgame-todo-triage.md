@@ -1,9 +1,18 @@
 # dGame/ TODO/FIXME Triage
 
 Snapshot of every `TODO` / `FIXME` / `XXX` / `HACK` marker found under `dGame/`
-as of 2026-05-25, with a per-item triage decision. The goal is to avoid
+as of **2026-05-25**, with a per-item triage decision. The goal is to avoid
 re-litigating these comments on the next audit pass: if a marker appears here
 and the surrounding code is unchanged, the decision below still stands.
+
+This is **not** a live issue tracker. File:line citations were accurate on
+2026-05-25 and have already drifted (example: GameMessages reputation TODO was
+`:5769`, now `:5611` after inventory-handler extract). Re-grep before acting.
+
+Spot-check 2026-09-05 on this tip: the regenerate command produced **48** hits
+(51 at audit, minus the two fix-now items and the `Entity.h` `GetComponents`
+`TODO: Remove` that the later flat-array commit deleted). Do not treat 51 as
+the current count.
 
 ## How to regenerate the inventory
 
@@ -16,14 +25,25 @@ At the time of this audit the command produced **51** hits.
 
 ## Summary
 
-| Bucket | Count | Action |
+| Bucket | Count (2026-05-25) | Action |
 |---|---:|---|
 | Fix now | 2 | Addressed in the same PR as this document |
 | Subsumed by Phase 2 / Phase 3 | 15 | Leave in place; will be rewritten by larger refactors |
 | Out of scope | 34 | Leave in place; needs gameplay/design work, missing systems, or stand-alone investigation |
 
-"Phase 2" and "Phase 3" refer to the roadmap in
+"Phase 2" and "Phase 3" named the April 2026 roadmap in
 [`context-files/14_SYNTHESIS_AND_RECOMMENDATIONS.md`](../context-files/14_SYNTHESIS_AND_RECOMMENDATIONS.md).
+**That document is retired.** Do not execute its Phase 1–3 as a plan. Living
+map: [`context-files/00_INDEX.md`](../context-files/00_INDEX.md) and
+[`context-files/STATUS.md`](../context-files/STATUS.md). Live backlog:
+`/workspace/lu-status/project-bearing.md` §6.
+
+On this tip, several "subsumed" items have already *started* (not finished):
+flat-array component storage landed (`533f0fcb`); `MessageHandlerRegistry` +
+four inventory handlers extracted; `GetEntitiesByComponent` is indexed. The
+leftover GameMessages switch, `InventoryComponent` 3-class split, and most
+TODO text in the tables below are still present. Ghosting TODOs in
+`GhostComponent` overlap `#1947` on `main` — still not a finished system.
 
 ## Fix-now items
 
@@ -40,10 +60,12 @@ Each of these will be rewritten or eliminated by a larger refactor on the
 roadmap. Fixing them in isolation would create churn the bigger change has to
 re-touch.
 
-### GameMessages.cpp monolith decomposition (Phase 2 Row: IMessageHandler split)
+### GameMessages.cpp monolith decomposition (was: Phase 2 IMessageHandler split)
 
-Doc 14 calls for splitting `dGame/dGameMessages/GameMessages.cpp` (currently
-~6,400 lines) into per-domain `IMessageHandler` implementations.
+Doc 14 (retired) called for splitting `dGame/dGameMessages/GameMessages.cpp`.
+On this tip the file is **6287** lines (`main` 6469). `MessageHandlerRegistry`
+exists; Equip/Unequip/Move/Remove are extracted. Combat/property/mission/movement
+handlers and the leftover switch are not. Line numbers below are 2026-05-25.
 
 | File:Line | Marker |
 |---|---|
@@ -53,10 +75,11 @@ Doc 14 calls for splitting `dGame/dGameMessages/GameMessages.cpp` (currently
 | `dGame/dGameMessages/GameMessages.cpp:5111` | `// FIXME: only really need utf8 conversion for the name, so move that up?` |
 | `dGame/dGameMessages/GameMessages.cpp:5769` | `// TODO This needs to be implemented when reputation is implemented for getting hot properties.` |
 
-### InventoryComponent 3-class split (Phase 3)
+### InventoryComponent 3-class split (was: Phase 3)
 
-Doc 14 calls for splitting `InventoryComponent` into separate equipment,
-inventory, and item-set responsibilities.
+Doc 14 (retired) called for splitting `InventoryComponent` into separate
+equipment, inventory, and item-set responsibilities. That split has **not**
+landed. Handler extract off `GameMessages` is a different change.
 
 | File:Line | Marker |
 |---|---|
@@ -64,14 +87,15 @@ inventory, and item-set responsibilities.
 | `dGame/dComponents/ModelComponent.cpp:243` | `// TODO move to the inventory` |
 | `dGame/dInventory/Item.h:18` | `* TODO: ideally this should be a component` |
 
-### Component flat-array overhaul (Phase 2)
+### Component flat-array overhaul (was: Phase 2)
 
-Doc 14 calls for replacing the `unordered_map<eReplicaComponentType, Component*>`
-with a flat array indexed by component type.
+Doc 14 (retired) called for replacing `unordered_map<eReplicaComponentType, Component*>`
+with a flat array. **The storage change landed** (`533f0fcb`, `Entity::m_ComponentArray`).
+The two remaining markers below were *not* folded into that commit.
 
 | File:Line | Marker |
 |---|---|
-| `dGame/Entity.h:219` | `// TODO: Remove` on `GetComponents()` getter. One consumer today (the unregister loop in `EntityManager.cpp:359` added in the indexed-lookup PR); flat-array overhaul will give that consumer a typed iterator and the getter can vanish. |
+| `dGame/Entity.h:219` (2026-05-25) | `// TODO: Remove` on `GetComponents()` getter. **Gone** on this tip — the getter remains as a template over the flat array, without that TODO. |
 | `dGame/dComponents/PetComponent.cpp:50` | `// TODO: Make reference when safe` on `m_PetInfo` value copy. Safe today because CDClient is read-only post-load, but the conversion is small enough to fold into the component overhaul rather than do separately. |
 | `dGame/dComponents/BuffComponent.cpp:406` | `// TODO: change this if to if (buff.cancelOnZone || buff.cancelOnLogout) handling at some point.  No current way to differentiate between zone transfer and logout.` Needs a context parameter from the caller, which the handler split will provide. |
 

@@ -1,3 +1,8 @@
+> **RETIRED (2026-04-03 Claude dump).** Not current. Living map: [`00_INDEX.md`](00_INDEX.md) · [`STATUS.md`](STATUS.md).
+> File:line citations are frozen at analysis time (committed `aa2de8e8`, 2026-05-19).
+>
+> **Critical falsehoods in this file:** SLikeNet as a ~95% drop-in / include-path migration is a **research claim, not a plan**. In-tree RakNet 3.25 is vendored and heavily used. C++23 and Dockerfile gcc:13 have **already landed on this stack** (main is still C++20 / gcc:12). A later section correctly notes no Lua in the current tree; do not follow “consider adding Lua” as a recommendation. Sanitizer/coverage presets exist on this tip but are not in CI.
+
 # DarkflameServer Replatforming Analysis
 
 Strategic assessment of modernizing networking, C++ standard, database layer, scripting, build system, navigation/physics, and deployment infrastructure.

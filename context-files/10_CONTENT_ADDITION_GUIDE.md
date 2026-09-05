@@ -1,3 +1,8 @@
+> **RETIRED (2026-04-03 Claude dump).** Not current. Living map: [`00_INDEX.md`](00_INDEX.md) · [`STATUS.md`](STATUS.md).
+> This is a **full document**, not a placeholder (the old INDEX was wrong). File:line and column names are frozen at analysis time (committed `aa2de8e8`, 2026-05-19).
+>
+> **Rot in this file:** References to server-side Lua / `.lua` `script_name` paths are false — scripts are C++ `CppScripts`. LOT/SQL recipes are the part worth a future rewrite; re-check every column against `dDatabase/CDClientDatabase/CDClientTables/` before generating SQL. Zone geometry / static placement is still **blocked** (no LUZ/LVL writer).
+
 # Content Addition Guide
 
 This guide provides step-by-step instructions for adding each major content type to DarkflameServer. All field names are drawn directly from the CDClient header files in `dDatabase/CDClientDatabase/CDClientTables/`.

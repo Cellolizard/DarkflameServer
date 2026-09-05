@@ -1,3 +1,8 @@
+> **RETIRED (2026-04-03 Claude dump).** Not current. Living map: [`00_INDEX.md`](00_INDEX.md) · [`STATUS.md`](STATUS.md).
+> File:line citations are frozen at analysis time (committed `aa2de8e8`, 2026-05-19).
+>
+> **Rot in this file:** Dual MySQL/SQLite player DB + CDClient SQLite catalog + character XML blob are still true. Migration counts in the dump (0–23 / “24 migrations”) are wrong: MySQL is **0–26**, SQLite player **0–9**. ItemSet LIKE is cached process-wide on this tip; the CDClient column is still a text list (no junction table).
+
 # DarkflameServer Data Persistence
 
 ## 1. Database Layer
