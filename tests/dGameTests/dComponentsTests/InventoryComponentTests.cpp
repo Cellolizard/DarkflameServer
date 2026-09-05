@@ -245,12 +245,14 @@ TEST_F(InventoryTest, IsTransferInventoryCorrectlyIdentifiesTypes) {
 // CheckItemSet on a fresh LOT that has no item-set membership does not crash.
 // This is the cache-miss + empty-result path.
 TEST_F(InventoryTest, CheckItemSetUnknownLotDoesNotCrash) {
+	SKIP_IF_NO_CDCLIENT_TABLE("ItemSets");
 	EXPECT_NO_FATAL_FAILURE(inventoryComponent->CheckItemSet(424242));
 }
 
 // Calling CheckItemSet twice on the same LOT is idempotent. The second call
 // short-circuits via the per-instance m_ItemSetsChecked early-exit.
 TEST_F(InventoryTest, CheckItemSetIsIdempotentForSameLot) {
+	SKIP_IF_NO_CDCLIENT_TABLE("ItemSets");
 	EXPECT_NO_FATAL_FAILURE({
 		inventoryComponent->CheckItemSet(424242);
 		inventoryComponent->CheckItemSet(424242);
@@ -260,6 +262,7 @@ TEST_F(InventoryTest, CheckItemSetIsIdempotentForSameLot) {
 // CheckItemSet is safe to call across a range of distinct LOTs in sequence.
 // Validates that the cache key handles many distinct entries.
 TEST_F(InventoryTest, CheckItemSetMultipleDistinctLotsDoesNotCrash) {
+	SKIP_IF_NO_CDCLIENT_TABLE("ItemSets");
 	EXPECT_NO_FATAL_FAILURE({
 		for (LOT lot = 500000; lot < 500050; ++lot) {
 			inventoryComponent->CheckItemSet(lot);
@@ -270,6 +273,7 @@ TEST_F(InventoryTest, CheckItemSetMultipleDistinctLotsDoesNotCrash) {
 // A second InventoryComponent invoking CheckItemSet on a LOT seen by the first
 // instance must not crash — verifies the static cache is safe across instances.
 TEST_F(InventoryTest, CheckItemSetCrossInstanceCacheReuseDoesNotCrash) {
+	SKIP_IF_NO_CDCLIENT_TABLE("ItemSets");
 	inventoryComponent->CheckItemSet(424243);
 
 	EntityInfo info2{};
@@ -286,5 +290,109 @@ TEST_F(InventoryTest, CheckItemSetCrossInstanceCacheReuseDoesNotCrash) {
 // setID 2 in the live CDClient ItemSets table — this exercises the cache-miss
 // + populated-result branch with realistic data.
 TEST_F(InventoryTest, CheckItemSetRealLotDoesNotCrash) {
+	SKIP_IF_NO_CDCLIENT_TABLE("ItemSets");
 	EXPECT_NO_FATAL_FAILURE(inventoryComponent->CheckItemSet(7356));
+}
+
+// ---------------------------------------------------------------------------
+// Equip / Unequip / MoveStack — characterization of the paths the extracted
+// inventory GameMessage handlers call (Item::Equip / UnEquip / MoveStack).
+// EquipItem hits CheckItemSet (CDClient ItemSets SQL) so those cases skip
+// when resServer/CDServer.sqlite is not present.
+// ---------------------------------------------------------------------------
+
+TEST_F(InventoryTest, EquipItemPlacesItemInEquippedMap) {
+	SKIP_IF_NO_CDCLIENT_TABLE("ItemSets");
+
+	inventoryComponent->AddItem(TEST_LOT_EQUIPPABLE, 1, eLootSourceType::NONE, eInventoryType::ITEMS);
+	Item* item = inventoryComponent->FindItemByLot(TEST_LOT_EQUIPPABLE, eInventoryType::ITEMS);
+	ASSERT_NE(item, nullptr);
+	EXPECT_FALSE(item->IsEquipped());
+	EXPECT_TRUE(inventoryComponent->GetEquippedItems().empty());
+
+	item->Equip();
+
+	EXPECT_TRUE(item->IsEquipped());
+	EXPECT_TRUE(inventoryComponent->IsEquipped(TEST_LOT_EQUIPPABLE));
+	ASSERT_EQ(inventoryComponent->GetEquippedItems().size(), 1u);
+	EXPECT_EQ(inventoryComponent->GetEquippedItems().begin()->second.lot, TEST_LOT_EQUIPPABLE);
+	EXPECT_EQ(inventoryComponent->GetEquippedItems().begin()->second.id, item->GetId());
+}
+
+TEST_F(InventoryTest, UnEquipItemClearsEquippedMap) {
+	SKIP_IF_NO_CDCLIENT_TABLE("ItemSets");
+
+	inventoryComponent->AddItem(TEST_LOT_EQUIPPABLE, 1, eLootSourceType::NONE, eInventoryType::ITEMS);
+	Item* item = inventoryComponent->FindItemByLot(TEST_LOT_EQUIPPABLE, eInventoryType::ITEMS);
+	ASSERT_NE(item, nullptr);
+	item->Equip();
+	ASSERT_TRUE(item->IsEquipped());
+
+	item->UnEquip();
+
+	EXPECT_FALSE(item->IsEquipped());
+	EXPECT_FALSE(inventoryComponent->IsEquipped(TEST_LOT_EQUIPPABLE));
+	EXPECT_TRUE(inventoryComponent->GetEquippedItems().empty());
+}
+
+TEST_F(InventoryTest, EquipAlreadyEquippedItemIsNoOp) {
+	SKIP_IF_NO_CDCLIENT_TABLE("ItemSets");
+
+	inventoryComponent->AddItem(TEST_LOT_EQUIPPABLE, 1, eLootSourceType::NONE, eInventoryType::ITEMS);
+	Item* item = inventoryComponent->FindItemByLot(TEST_LOT_EQUIPPABLE, eInventoryType::ITEMS);
+	ASSERT_NE(item, nullptr);
+	item->Equip();
+	ASSERT_EQ(inventoryComponent->GetEquippedItems().size(), 1u);
+
+	EXPECT_NO_FATAL_FAILURE(item->Equip());
+	EXPECT_EQ(inventoryComponent->GetEquippedItems().size(), 1u);
+	EXPECT_TRUE(item->IsEquipped());
+}
+
+TEST_F(InventoryTest, UnEquipUnequippedItemIsNoOp) {
+	inventoryComponent->AddItem(TEST_LOT_EQUIPPABLE, 1, eLootSourceType::NONE, eInventoryType::ITEMS);
+	Item* item = inventoryComponent->FindItemByLot(TEST_LOT_EQUIPPABLE, eInventoryType::ITEMS);
+	ASSERT_NE(item, nullptr);
+	EXPECT_FALSE(item->IsEquipped());
+
+	EXPECT_NO_FATAL_FAILURE(item->UnEquip());
+	EXPECT_TRUE(inventoryComponent->GetEquippedItems().empty());
+}
+
+TEST_F(InventoryTest, MoveStackChangesSlotWithinSameInventory) {
+	inventoryComponent->AddItem(TEST_LOT_STACKABLE, 1, eLootSourceType::NONE, eInventoryType::ITEMS);
+	Item* item = inventoryComponent->FindItemByLot(TEST_LOT_STACKABLE, eInventoryType::ITEMS);
+	ASSERT_NE(item, nullptr);
+	const uint32_t originalSlot = item->GetSlot();
+	const LWOOBJID itemId = item->GetId();
+
+	inventoryComponent->MoveStack(item, eInventoryType::INVALID, originalSlot + 3);
+
+	Item* moved = inventoryComponent->FindItemById(itemId);
+	ASSERT_NE(moved, nullptr);
+	EXPECT_EQ(moved->GetSlot(), originalSlot + 3);
+	EXPECT_EQ(moved->GetInventory()->GetType(), eInventoryType::ITEMS);
+	EXPECT_EQ(inventoryComponent->GetLotCount(TEST_LOT_STACKABLE), 1u);
+}
+
+TEST_F(InventoryTest, MoveStackToDifferentInventoryTypeRelocatesItem) {
+	inventoryComponent->AddItem(TEST_LOT_STACKABLE, 2, eLootSourceType::NONE, eInventoryType::ITEMS);
+	Item* item = inventoryComponent->FindItemByLot(TEST_LOT_STACKABLE, eInventoryType::ITEMS);
+	ASSERT_NE(item, nullptr);
+	const LWOOBJID itemId = item->GetId();
+
+	inventoryComponent->MoveStack(item, eInventoryType::QUEST, 0);
+
+	Item* moved = inventoryComponent->FindItemById(itemId);
+	ASSERT_NE(moved, nullptr);
+	EXPECT_EQ(moved->GetInventory()->GetType(), eInventoryType::QUEST);
+	EXPECT_EQ(moved->GetSlot(), 0u);
+	EXPECT_EQ(inventoryComponent->GetInventory(eInventoryType::ITEMS)->GetLotCount(TEST_LOT_STACKABLE), 0u);
+	EXPECT_EQ(inventoryComponent->GetInventory(eInventoryType::QUEST)->GetLotCount(TEST_LOT_STACKABLE), 2u);
+}
+
+TEST_F(InventoryTest, RemoveItemOverCountIsNoOpAndReturnsFalse) {
+	inventoryComponent->AddItem(TEST_LOT_STACKABLE, 2, eLootSourceType::NONE, eInventoryType::ITEMS);
+	EXPECT_FALSE(inventoryComponent->RemoveItem(TEST_LOT_STACKABLE, 5, eInventoryType::ITEMS));
+	EXPECT_EQ(inventoryComponent->GetLotCount(TEST_LOT_STACKABLE), 2u);
 }
