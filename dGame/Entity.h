@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <map>
 #include <functional>
 #include <tuple>
@@ -12,6 +13,7 @@
 #include "NiQuaternion.h"
 #include "LDFFormat.h"
 #include "eKillType.h"
+#include "eReplicaComponentType.h"
 #include "Observable.h"
 
 namespace GameMessages {
@@ -48,7 +50,6 @@ class PositionUpdate;
 struct EntityInfo;
 enum class eTriggerEventType;
 enum class eGameMasterLevel : uint8_t;
-enum class eReplicaComponentType : uint32_t;
 enum class eReplicaPacketType : uint8_t;
 enum class eCinematicEvent : uint32_t;
 
@@ -177,7 +178,20 @@ public:
 
 	bool HasComponent(eReplicaComponentType componentId) const;
 
-	void AddComponent(eReplicaComponentType componentId, Component* component);
+	// Total count of populated component slots (across the dense array + the
+	// DESTROYABLE special-case slot). Used by ghosting heuristics.
+	size_t GetComponentCount() const;
+
+	// Invokes f(Component*) for each populated component slot, including
+	// the DESTROYABLE special-case slot.
+	template<typename F>
+	void ForEachComponent(F&& f);
+	template<typename F>
+	void ForEachComponent(F&& f) const;
+
+	// Invokes f(eReplicaComponentType) for each populated component slot.
+	template<typename F>
+	void ForEachComponentType(F&& f) const;
 
 	// Internal: notifies EntityManager that a new component slot was created on
 	// this entity. Defined in Entity.cpp to avoid pulling EntityManager.h into
@@ -215,8 +229,6 @@ public:
 
 	void AddToGroup(const std::string& group);
 	bool IsPlayer() const;
-
-	std::unordered_map<eReplicaComponentType, Component*>& GetComponents() { return m_Components; } // TODO: Remove
 
 	void WriteBaseReplicaData(RakNet::BitStream& outBitStream, eReplicaPacketType packetType);
 	void WriteComponents(RakNet::BitStream& outBitStream, eReplicaPacketType packetType) const;
@@ -397,7 +409,30 @@ private:
 	std::vector<std::function<void()>> m_DieCallbacks;
 	std::vector<std::function<void(Entity* target)>> m_PhantomCollisionCallbacks;
 
-	std::unordered_map<eReplicaComponentType, Component*> m_Components;
+	// Dense component types occupy enum values [0, kDenseComponentTypeCount).
+	// CULLING_PLANE = 116 is the highest dense value in eReplicaComponentType.
+	// Storage is a flat array indexed by enum value plus a separate slot for
+	// DESTROYABLE (= 1000), which is an internal disambiguation pseudo-value
+	// not part of the dense range. See eReplicaComponentType.h for the rationale.
+	static constexpr size_t kDenseComponentTypeCount = 118;
+	static_assert(static_cast<size_t>(eReplicaComponentType::CULLING_PLANE) < kDenseComponentTypeCount,
+		"last dense eReplicaComponentType (CULLING_PLANE) must be < kDenseComponentTypeCount; bump the array size if a new dense type is added");
+	std::array<Component*, kDenseComponentTypeCount> m_ComponentArray{};
+	Component* m_DestroyableComponent = nullptr;
+
+	// Inline helper returning a pointer-to-slot for any valid component type ID,
+	// or nullptr if the ID is out of range (other than the DESTROYABLE special
+	// case). Used by GetComponent / HasComponent / AddComponent / TryGetComponent
+	// so the DESTROYABLE branch lives in exactly one place.
+	Component** ComponentSlot(eReplicaComponentType componentId);
+	Component* const* ComponentSlot(eReplicaComponentType componentId) const;
+
+	// Invokes ~Component() on the given pointer. Out-of-line so the AddComponent
+	// template (which uses this on the placement-new reuse path) doesn't need
+	// Component's full definition visible in Entity.h - keeping the include
+	// graph thin.
+	static void DestructComponentInPlace(Component* component);
+
 	std::vector<EntityTimer> m_Timers;
 	std::vector<EntityTimer> m_PendingTimers;
 	std::vector<EntityCallbackTimer> m_CallbackTimers;
@@ -434,24 +469,47 @@ private:
  * Template definitions.
  */
 
+template<typename F>
+void Entity::ForEachComponent(F&& f) {
+	for (auto* component : m_ComponentArray) {
+		if (component) f(component);
+	}
+	if (m_DestroyableComponent) f(m_DestroyableComponent);
+}
+
+template<typename F>
+void Entity::ForEachComponent(F&& f) const {
+	for (const auto* component : m_ComponentArray) {
+		if (component) f(component);
+	}
+	if (m_DestroyableComponent) f(static_cast<const Component*>(m_DestroyableComponent));
+}
+
+template<typename F>
+void Entity::ForEachComponentType(F&& f) const {
+	for (size_t i = 0; i < kDenseComponentTypeCount; ++i) {
+		if (m_ComponentArray[i]) f(static_cast<eReplicaComponentType>(i));
+	}
+	if (m_DestroyableComponent) f(eReplicaComponentType::DESTROYABLE);
+}
+
 template<typename T>
 bool Entity::TryGetComponent(const eReplicaComponentType componentId, T*& component) const {
-	const auto& index = m_Components.find(componentId);
-
-	if (index == m_Components.end()) {
+	auto* const* slot = ComponentSlot(componentId);
+	if (!slot || !*slot) {
 		component = nullptr;
-
 		return false;
 	}
-
-	component = dynamic_cast<T*>(index->second);
-
+	// Safe static_cast because AddComponent stores each component under its
+	// own ComponentType ID; the slot for ID X always holds a T where
+	// T::ComponentType == X.
+	component = static_cast<T*>(*slot);
 	return true;
 }
 
 template <typename T>
 T* Entity::GetComponent() const {
-	return dynamic_cast<T*>(GetComponent(T::ComponentType));
+	return static_cast<T*>(GetComponent(T::ComponentType));
 }
 
 
@@ -593,8 +651,11 @@ template<typename ComponentType, typename... VaArgs>
 inline ComponentType* Entity::AddComponent(VaArgs... args) {
 	static_assert(std::is_base_of_v<Component, ComponentType>, "ComponentType must be a Component");
 
-	// Get the component if it already exists, or default construct a nullptr
-	auto*& componentToReturn = m_Components[ComponentType::ComponentType];
+	Component** const slot = ComponentSlot(ComponentType::ComponentType);
+	// All component classes declare ComponentType in eReplicaComponentType, so
+	// the slot is always resolvable. A null slot here means a bug in the
+	// caller's static_assert path.
+	auto*& componentToReturn = *slot;
 
 	// If it doesn't exist, create it and forward the arguments to the constructor
 	if (!componentToReturn) {
@@ -607,14 +668,14 @@ inline ComponentType* Entity::AddComponent(VaArgs... args) {
 		// Placement new means we already have memory allocated for the object, so this just calls its constructor again.
 		// This is useful for when we want to create a new object in the same memory location as an old one.
 		// No index update needed: the entity is already registered for this component type.
-		componentToReturn->~Component();
+		DestructComponentInPlace(componentToReturn);
 		new(componentToReturn) ComponentType(this, std::forward<VaArgs>(args)...);
 	}
 
-	// Finally return the created or already existing component.
-	// Because of the assert above, this should always be a ComponentType* but I need a way to guarantee the map cannot be modifed outside this function
-	// To allow a static cast here instead of a dynamic one.
-	return dynamic_cast<ComponentType*>(componentToReturn);
+	// Safe static_cast because the slot for a given ComponentType::ComponentType
+	// only ever holds a ComponentType* (enforced by this function being the
+	// only writer).
+	return static_cast<ComponentType*>(componentToReturn);
 }
 
 template<typename... T>
