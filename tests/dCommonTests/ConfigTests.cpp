@@ -7,6 +7,7 @@
 
 #include <gtest/gtest.h>
 
+#include "dCommonDependencies.h"
 #include "dConfig.h"
 #include "BinaryPathFinder.h"
 
@@ -18,7 +19,7 @@
 // Fixture
 // ---------------------------------------------------------------------------
 
-class ConfigTest : public ::testing::Test {
+class ConfigTest : public dCommonDependenciesTest {
 protected:
     // Filename only — dConfig prepends BinaryPathFinder::GetBinaryDir().
     static constexpr const char* kConfigFilename = "test_config_dcommon.ini";
@@ -27,6 +28,7 @@ protected:
     std::filesystem::path configFullPath;
 
     void SetUp() override {
+        SetUpDependencies();  // initializes Game::logger; needed by dConfig::ReloadConfig → LogSettings
         configFullPath = BinaryPathFinder::GetBinaryDir() / kConfigFilename;
 
         std::ofstream f(configFullPath);
@@ -50,6 +52,7 @@ protected:
         // Also remove any reload-test file if it was created.
         std::filesystem::remove(
             BinaryPathFinder::GetBinaryDir() / "test_config_reload.ini", ec);
+        TearDownDependencies();
     }
 
     // Helper: write a fresh config file and return a loaded dConfig for it.

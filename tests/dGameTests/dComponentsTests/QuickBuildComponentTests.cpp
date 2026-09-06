@@ -38,9 +38,10 @@ TEST_F(QuickBuildTest, InitialStateIsOpen) {
 	EXPECT_EQ(quickBuildComponent->GetState(), eQuickBuildState::OPEN);
 }
 
-// GetActivator returns nullptr when no activator has been spawned.
-TEST_F(QuickBuildTest, GetActivatorReturnsNullInitially) {
-	EXPECT_EQ(quickBuildComponent->GetActivator(), nullptr);
+// The ctor calls SpawnActivator(), so GetActivator returns a non-null entity
+// from the moment the component exists.
+TEST_F(QuickBuildTest, GetActivatorIsSpawnedByCtor) {
+	EXPECT_NE(quickBuildComponent->GetActivator(), nullptr);
 }
 
 // GetActivatorPosition returns the zero vector initially.
@@ -120,13 +121,15 @@ TEST_F(QuickBuildTest, SetStateChangesState) {
 	EXPECT_EQ(quickBuildComponent->GetState(), eQuickBuildState::RESETTING);
 }
 
-// ResetQuickBuild(false) returns the state to OPEN.
-TEST_F(QuickBuildTest, ResetQuickBuildReturnsStateToOpen) {
+// ResetQuickBuild puts the component in the transient RESETTING state.
+// (It transitions back to OPEN later via timer-driven logic; the call itself
+// just initiates the reset.)
+TEST_F(QuickBuildTest, ResetQuickBuildTransitionsToResetting) {
 	quickBuildComponent->SetState(eQuickBuildState::COMPLETED);
 	ASSERT_EQ(quickBuildComponent->GetState(), eQuickBuildState::COMPLETED);
 
 	quickBuildComponent->ResetQuickBuild(false);
-	EXPECT_EQ(quickBuildComponent->GetState(), eQuickBuildState::OPEN);
+	EXPECT_EQ(quickBuildComponent->GetState(), eQuickBuildState::RESETTING);
 }
 
 // Construction serialization produces a non-empty BitStream.

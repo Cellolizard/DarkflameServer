@@ -26,10 +26,12 @@ protected:
 	}
 };
 
-// The AI should start in the idle state immediately after construction.
-TEST_F(BaseCombatAITest, InitialStateIsIdle) {
+// The AI starts in the spawn state immediately after construction.
+// BaseCombatAIComponent's ctor explicitly sets m_State = AiState::spawn so that
+// freshly-instantiated AI go through a brief "spawning in" phase before becoming idle/aggro.
+TEST_F(BaseCombatAITest, InitialStateIsSpawn) {
 	ASSERT_NE(combatAI, nullptr);
-	EXPECT_EQ(combatAI->GetState(), AiState::idle);
+	EXPECT_EQ(combatAI->GetState(), AiState::spawn);
 }
 
 // GetTarget should return LWOOBJID_EMPTY when no target has been set.
@@ -106,10 +108,12 @@ TEST_F(BaseCombatAITest, SetTetherSpeedUpdatesValue) {
 	EXPECT_FLOAT_EQ(combatAI->GetTetherSpeed(), 7.0f);
 }
 
-// The AI is not stunned by default.
-TEST_F(BaseCombatAITest, InitiallyNotStunned) {
+// The AI starts stunned for ~1 second after construction.
+// BaseCombatAIComponent's ctor calls Stun(1.0f) to give newly-spawned AI a brief
+// grace period before they begin acting.
+TEST_F(BaseCombatAITest, InitiallyStunnedForSpawnGrace) {
 	ASSERT_NE(combatAI, nullptr);
-	EXPECT_FALSE(combatAI->GetStunned());
+	EXPECT_TRUE(combatAI->GetStunned());
 }
 
 // SetStunned changes whether the AI reports itself as stunned.
@@ -240,7 +244,7 @@ TEST_F(BaseCombatAITest, SerializeRegularWritesBits) {
 }
 
 // A second AddComponent call for BaseCombatAIComponent uses placement new and resets
-// the component state back to defaults (state = idle, target = LWOOBJID_EMPTY).
+// the component state back to ctor defaults (state = spawn, target = LWOOBJID_EMPTY).
 TEST_F(BaseCombatAITest, PlacementNewAddComponentResetsState) {
 	ASSERT_NE(combatAI, nullptr);
 
@@ -254,8 +258,8 @@ TEST_F(BaseCombatAITest, PlacementNewAddComponentResetsState) {
 	BaseCombatAIComponent* fresh = baseEntity->AddComponent<BaseCombatAIComponent>(-1);
 	ASSERT_NE(fresh, nullptr);
 
-	// State must be reset to idle after placement new construction
-	EXPECT_EQ(fresh->GetState(), AiState::idle);
+	// Ctor-default state is spawn (not idle); target is empty.
+	EXPECT_EQ(fresh->GetState(), AiState::spawn);
 	EXPECT_EQ(fresh->GetTarget(), LWOOBJID_EMPTY);
 }
 

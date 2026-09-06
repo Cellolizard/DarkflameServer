@@ -62,12 +62,15 @@ TEST_F(BuffTest, ApplyBuffMakesHasBuffReturnTrue) {
 	EXPECT_TRUE(buffComponent->HasBuff(BUFF_ID_A));
 }
 
-// RemoveBuff removes the buff so HasBuff returns false.
+// RemoveBuff schedules the buff for removal; the actual erase happens during
+// Update() which drains m_BuffsToRemove. So we need to tick Update before HasBuff
+// reflects the removal.
 TEST_F(BuffTest, RemoveBuffMakesHasBuffReturnFalse) {
 	buffComponent->ApplyBuff(BUFF_ID_A, 10.0f, LWOOBJID_EMPTY);
 	ASSERT_TRUE(buffComponent->HasBuff(BUFF_ID_A));
 
 	buffComponent->RemoveBuff(BUFF_ID_A, false, false, true);
+	buffComponent->Update(0.0f);  // Flush m_BuffsToRemove → m_Buffs.erase()
 	EXPECT_FALSE(buffComponent->HasBuff(BUFF_ID_A));
 }
 
@@ -170,11 +173,13 @@ TEST_F(BuffTest, SerializeConstructionProducesNonEmptyBitStream) {
 	EXPECT_GT(bitStream.GetNumberOfBitsUsed(), 0u);
 }
 
-// Regular serialization also produces a non-empty BitStream.
-TEST_F(BuffTest, SerializeRegularProducesNonEmptyBitStream) {
+// Regular (non-initial) BuffComponent serialization writes nothing — the impl
+// short-circuits with `if (!bIsInitialUpdate) return;`. Only the construction
+// (initial) update emits buff data.
+TEST_F(BuffTest, SerializeRegularWritesNoBits) {
 	bitStream.Reset();
 	buffComponent->Serialize(bitStream, false);
-	EXPECT_GT(bitStream.GetNumberOfBitsUsed(), 0u);
+	EXPECT_EQ(bitStream.GetNumberOfBitsUsed(), 0u);
 }
 
 // Applying the same buff ID twice does not cause a crash and the buff is present.
