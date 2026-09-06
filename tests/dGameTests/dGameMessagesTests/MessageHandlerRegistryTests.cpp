@@ -3,6 +3,7 @@
 #include "GameMessages.h"
 #include "MessageHandlerRegistry.h"
 #include "MessageType/Game.h"
+#include "RegisterProductionHandlers.h"
 
 namespace {
 	// Minimal GameMsg subclass for use as a registered handler in tests.
@@ -23,6 +24,13 @@ namespace {
 			// static-init populates it with the production handler set; tests
 			// clear it so each case starts from a known empty state.
 			MessageHandlerRegistry::Instance().ClearForTesting();
+		}
+
+		void TearDown() override {
+			// Restore the production set so later tests that dispatch through
+			// GameMessageHandler still see Equip/Unequip/Move/Remove.
+			MessageHandlerRegistry::Instance().ClearForTesting();
+			RegisterProductionGameMessageHandlers();
 		}
 	};
 }
