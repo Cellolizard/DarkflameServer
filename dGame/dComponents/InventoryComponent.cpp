@@ -1,6 +1,7 @@
 #include "InventoryComponent.h"
 
 #include <sstream>
+#include <unordered_map>
 
 #include "Entity.h"
 #include "Item.h"
@@ -1128,25 +1129,40 @@ bool InventoryComponent::IsEquipped(const LOT lot) const {
 }
 
 void InventoryComponent::CheckItemSet(const LOT lot) {
-	// Check if the lot is in the item set cache
+	// Per-inventory early-exit: have we already processed this LOT here?
 	if (std::find(m_ItemSetsChecked.begin(), m_ItemSetsChecked.end(), lot) != m_ItemSetsChecked.end()) {
 		return;
 	}
 
-	const std::string lot_query = "%" + std::to_string(lot) + "%";
+	// Process-wide cache of LOT -> set IDs that contain it. The CDClient SQLite
+	// is read-only after FDB conversion at startup, so this mapping never
+	// changes during the server's lifetime. The previous code ran an unindexable
+	// "WHERE itemIDs LIKE %lot%" full-table scan on every equip; with the cache
+	// the scan runs at most once per LOT for the entire process.
+	static std::unordered_map<LOT, std::vector<uint32_t>> s_setIdsByLot;
 
-	auto query = CDClientDatabase::CreatePreppedStmt(
-		"SELECT setID FROM ItemSets WHERE itemIDs LIKE ?;");
-	query.bind(1, lot_query.c_str());
+	auto cacheIt = s_setIdsByLot.find(lot);
+	if (cacheIt == s_setIdsByLot.end()) {
+		std::vector<uint32_t> setIds;
 
-	auto result = query.execQuery();
+		const std::string lot_query = "%" + std::to_string(lot) + "%";
+		auto query = CDClientDatabase::CreatePreppedStmt(
+			"SELECT setID FROM ItemSets WHERE itemIDs LIKE ?;");
+		query.bind(1, lot_query.c_str());
+		auto result = query.execQuery();
 
-	while (!result.eof()) {
-		const auto id = result.getIntField("setID");
+		while (!result.eof()) {
+			setIds.push_back(static_cast<uint32_t>(result.getIntField("setID")));
+			result.nextRow();
+		}
+		result.finalize();
 
+		cacheIt = s_setIdsByLot.emplace(lot, std::move(setIds)).first;
+	}
+
+	// Per-instance build: create ItemSet objects for any setIDs this player doesn't already own.
+	for (const uint32_t id : cacheIt->second) {
 		bool found = false;
-
-		// Check if we have the set already
 		for (auto* itemset : m_Itemsets) {
 			if (itemset->GetID() == id) {
 				found = true;
@@ -1155,17 +1171,11 @@ void InventoryComponent::CheckItemSet(const LOT lot) {
 		}
 
 		if (!found) {
-			auto* set = new ItemSet(id, this);
-
-			m_Itemsets.push_back(set);
+			m_Itemsets.push_back(new ItemSet(id, this));
 		}
-
-		result.nextRow();
 	}
 
 	m_ItemSetsChecked.push_back(lot);
-
-	result.finalize();
 }
 
 void InventoryComponent::SetConsumable(LOT lot) {
