@@ -8,6 +8,12 @@ list(APPEND DGAMETEST_SOURCES ${DCOMPONENTS_TESTS})
 add_subdirectory(dGameMessagesTests)
 list(APPEND DGAMETEST_SOURCES ${DGAMEMESSAGES_TESTS})
 
+add_subdirectory(dEntityTests)
+list(APPEND DGAMETEST_SOURCES ${DENTITY_TESTS})
+
+add_subdirectory(dCombatTests)
+list(APPEND DGAMETEST_SOURCES ${DCOMBAT_TESTS})
+
 file(COPY ${GAMEMESSAGE_TESTBITSTREAMS} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 file(COPY ${COMPONENT_TEST_DATA} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
@@ -23,6 +29,9 @@ endif()
 
 target_link_libraries(dGameTests ${COMMON_LIBRARIES} GTest::gtest_main
 	dGame dScripts dPhysics Detour Recast tinyxml2 dWorldServer dZoneManager dChatFilter dNavigation)
+
+target_compile_definitions(dGameTests PRIVATE
+	CDCLIENT_TEST_PATH="${CMAKE_SOURCE_DIR}/resServer/CDServer.sqlite")
 
 # Discover the tests
 gtest_discover_tests(dGameTests)

@@ -17,6 +17,7 @@
 #include <ranges>
 
 #include "ObjectIDManager.h"
+#include "CDClientDatabase.h"
 
 void dZoneManager::Initialize(const LWOZONEID& zoneID) {
 	LOG("Preparing zone: %i/%i/%i", zoneID.GetMapID(), zoneID.GetInstanceID(), zoneID.GetCloneID());
@@ -194,8 +195,14 @@ std::vector<Spawner*> dZoneManager::GetSpawnersInGroup(const std::string& group)
 
 uint32_t dZoneManager::GetUniqueMissionIdStartingValue() {
 	if (m_UniqueMissionIdStart == 0) {
-		auto tableData = CDClientDatabase::ExecuteQuery("SELECT COUNT(*) FROM Missions WHERE isMission = 0 GROUP BY isMission;");
-		m_UniqueMissionIdStart = tableData.getIntField(0, 1);
+		// Tests (and any process without a CDClient) still construct MissionComponent.
+		// Live started this counter at 746; use that when the catalog is not open.
+		if (CDClientDatabase::isConnected) {
+			auto tableData = CDClientDatabase::ExecuteQuery("SELECT COUNT(*) FROM Missions WHERE isMission = 0 GROUP BY isMission;");
+			m_UniqueMissionIdStart = tableData.getIntField(0, 1);
+		} else {
+			m_UniqueMissionIdStart = 746;
+		}
 	}
 	return m_UniqueMissionIdStart;
 }

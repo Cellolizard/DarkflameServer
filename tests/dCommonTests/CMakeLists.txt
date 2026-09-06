@@ -11,6 +11,9 @@ set(DCOMMONTEST_SOURCES
 	"TestLUWString.cpp"
 	"dCommonDependencies.cpp"
 	"LxfmlTests.cpp"
+	"CDClientTableTests.cpp"
+	"ConfigTests.cpp"
+	"BitStreamExtendedTests.cpp"
 )
 
 add_subdirectory(dEnumsTests)
@@ -29,6 +32,9 @@ endif()
 
 # Link needed libraries
 target_link_libraries(dCommonTests ${COMMON_LIBRARIES} GTest::gtest_main)
+
+target_compile_definitions(dCommonTests PRIVATE
+	CDCLIENT_TEST_PATH="${CMAKE_SOURCE_DIR}/resServer/CDServer.sqlite")
 
 # Copy test files to testing directory
 add_subdirectory(TestBitStreams)
