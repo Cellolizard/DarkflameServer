@@ -1,5 +1,9 @@
 # <img style="float: left; padding-right: 5px" height=35px width=35px src="logo.png"> Darkflame Universe
 
+## This repository
+
+This is the **Cellolizard** line of [DarkflameServer](https://github.com/Cellolizard/DarkflameServer), based on [Darkflame Universe](https://github.com/DarkflameUniverse/DarkflameServer). Full git history and the AGPLv3 license from that project are retained. Upstream DLU is tracked as the `upstream` remote; this repository is standalone (not in the GitHub fork network) and is not intended for pull requests back to DarkflameUniverse.
+
 ## Introduction
 Darkflame Universe (DLU) is a server emulator for LEGO® Universe. Development started in 2013 and has gone through multiple iterations and is now able to present a near perfect emulation of the game server.
 
