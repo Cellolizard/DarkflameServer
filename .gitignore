@@ -123,6 +123,9 @@ docker-compose.override.yml
 
 !*Test.bin
 
+# Local CDClient database (per-developer; loaded by tests via CDCLIENT_TEST_PATH)
+resServer/CDServer.sqlite
+
 # CMake scripts
 !cmake/*
 !cmake/toolchains/*

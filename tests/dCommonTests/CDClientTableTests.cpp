@@ -3,6 +3,7 @@
 // directly, bypassing the SQLite database entirely.
 
 #include <gtest/gtest.h>
+#include <fstream>
 
 #include "dCommonVars.h"
 #include "CDClientDatabase.h"
@@ -25,8 +26,13 @@ protected:
         // Open the real CDServer.sqlite so the table fallback path
         // (cache miss → DB query) can return defaults for IDs we never
         // injected, instead of throwing "Database not open".
+        // The file is gitignored; do not Connect if it is missing (that would
+        // create an empty sqlite and then fail queries with "no such table").
         if (!CDClientDatabase::isConnected) {
-            CDClientDatabase::Connect(CDCLIENT_TEST_PATH);
+            std::ifstream sqliteFile{CDCLIENT_TEST_PATH};
+            if (sqliteFile.good()) {
+                CDClientDatabase::Connect(CDCLIENT_TEST_PATH);
+            }
         }
 #endif
         // Clear all tables we use so each test starts from a clean slate.
@@ -315,6 +321,9 @@ TEST_F(CDClientTableTest, CDItemComponentTable_InjectAndRetrieve) {
 }
 
 TEST_F(CDClientTableTest, CDItemComponentTable_NonExistentID_ReturnsDefault) {
+    if (!CDClientDatabase::isConnected) {
+        GTEST_SKIP() << "CDClient fixture missing (resServer/CDServer.sqlite)";
+    }
     // Without a live DB connection the prepared-statement path will not execute,
     // but GetItemComponentByID will insert the Default entry for the missing ID
     // and return it — the Default is a zero-initialised CDItemComponent.
@@ -460,6 +469,9 @@ TEST_F(CDClientTableTest, CDObjectsTable_InjectAndRetrieve) {
 }
 
 TEST_F(CDClientTableTest, CDObjectsTable_NonExistentLOT_DoesNotCrash) {
+    if (!CDClientDatabase::isConnected) {
+        GTEST_SKIP() << "CDClient fixture missing (resServer/CDServer.sqlite)";
+    }
     auto* table = CDClientManager::GetTable<CDObjectsTable>();
     // Without a live DB the prepared-statement fallback returns ObjDefault.
     // Just verify no crash occurs.
@@ -567,6 +579,9 @@ TEST_F(CDClientTableTest, CDLootMatrixTable_MultipleEntriesUnderSameIndex) {
 }
 
 TEST_F(CDClientTableTest, CDLootMatrixTable_NonExistentMatrix_ReturnsEmptyEntries) {
+    if (!CDClientDatabase::isConnected) {
+        GTEST_SKIP() << "CDClient fixture missing (resServer/CDServer.sqlite)";
+    }
     auto* table = CDClientManager::GetTable<CDLootMatrixTable>();
     // Without a DB connection the query returns nothing; GetMatrix inserts an
     // empty vector and returns it.
