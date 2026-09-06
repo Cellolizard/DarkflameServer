@@ -2,11 +2,21 @@
 #include <gtest/gtest.h>
 
 #include "Entity.h"
+#include "InventoryComponent.h"
+#include "Item.h"
 #include "MissionComponent.h"
 #include "Mission.h"
+#include "MissionTask.h"
 #include "eMissionState.h"
+#include "eMissionTaskType.h"
 #include "CDClientManager.h"
 #include "CDMissionsTable.h"
+#include "CDMissionTasksTable.h"
+#include "CDComponentsRegistryTable.h"
+#include "CDItemComponentTable.h"
+#include "eReplicaComponentType.h"
+#include "eInventoryType.h"
+#include "eLootSourceType.h"
 
 // A test mission ID injected into CDMissionsTable in SetUp.
 static constexpr uint32_t TEST_MISSION_ID    = 9991;
@@ -203,6 +213,7 @@ TEST_F(MissionTest, AddCollectibleTwiceDoesNotCrash) {
 
 // RequiresItem returns false for an arbitrary LOT when there are no active missions.
 TEST_F(MissionTest, RequiresItemReturnsFalseWithNoMissions) {
+	SKIP_IF_NO_CDCLIENT_TABLE("Objects");
 	EXPECT_FALSE(missionComponent->RequiresItem(12345));
 }
 
@@ -214,4 +225,276 @@ TEST_F(MissionTest, MultipleIndependentMissionsAccepted) {
 	EXPECT_TRUE(missionComponent->HasMission(TEST_MISSION_ID));
 	EXPECT_TRUE(missionComponent->HasMission(TEST_REPEATABLE_ID));
 	EXPECT_EQ(missionComponent->GetMissions().size(), 2u);
+}
+
+// ---------------------------------------------------------------------------
+// Task progression / AddProgress clamping / re-entrant Progress
+//
+// These pin the paths that were UB-prone on main (#1973: iterator invalidation
+// when Progress() inserted into m_Missions while iterating) and the GATHER
+// negative-delta used by RemoveItemFromInventory.
+// ---------------------------------------------------------------------------
+
+namespace {
+	constexpr uint32_t kSmashMissionId = 91001;
+	constexpr uint32_t kGatherMissionId = 91002;
+	constexpr uint32_t kSmashAchievementId = 91003;
+	constexpr uint32_t kMetaAchievementId = 91004;
+	constexpr uint32_t kUid984MissionId = 91005;
+	constexpr uint32_t kTwoTaskMissionId = 91006;
+	constexpr int32_t kSmashTarget = 88001;
+	constexpr LOT kGatherLot = 8194;
+	constexpr uint32_t kGatherComponentId = 11900;
+
+	CDMissions MakeSafeMission(int32_t id, bool isMission) {
+		CDMissions m{};
+		m.id = id;
+		m.defined_type = isMission ? "Mission" : "Achievement";
+		m.isMission = isMission;
+		m.repeatable = false;
+		m.reward_item1_count = -1;
+		m.reward_item2_count = -1;
+		m.reward_item3_count = -1;
+		m.reward_item4_count = -1;
+		m.reward_item1_repeat_count = -1;
+		m.reward_item2_repeat_count = -1;
+		m.reward_item3_repeat_count = -1;
+		m.reward_item4_repeat_count = -1;
+		m.reward_emote = -1;
+		m.reward_emote2 = -1;
+		m.reward_emote3 = -1;
+		m.reward_emote4 = -1;
+		m.time_limit = -1;
+		m.cooldownTime = -1;
+		m.UIPrereqID = -1;
+		m.reward_item1_repeatable = -1;
+		m.reward_item2_repeatable = -1;
+		m.reward_item3_repeatable = -1;
+		m.reward_item4_repeatable = -1;
+		return m;
+	}
+
+	CDMissionTasks MakeTask(uint32_t missionId, eMissionTaskType type, uint32_t target, int32_t targetValue, uint32_t uid) {
+		CDMissionTasks t{};
+		t.id = missionId;
+		t.taskType = static_cast<uint32_t>(type);
+		t.target = target;
+		t.targetGroup = "";
+		t.targetValue = targetValue;
+		t.taskParam1 = "";
+		t.uid = uid;
+		return t;
+	}
+
+	void RegisterLotAsItem(LOT lot, uint32_t componentId) {
+		auto& registryEntries = CDClientManager::GetEntriesMutable<CDComponentsRegistryTable>();
+		const uint64_t typeKey = (static_cast<uint64_t>(eReplicaComponentType::ITEM) << 32) | static_cast<uint64_t>(lot);
+		registryEntries[typeKey] = componentId;
+		registryEntries[static_cast<uint64_t>(lot)] = 0;
+
+		CDItemComponent c{};
+		c.id = componentId;
+		c.stackSize = 10;
+		c.rarity = 1;
+		c.inLootTable = true;
+		c.readyForQA = true;
+		c.SellMultiplier = 1.0f;
+		c.reqPrecondition = "";
+		c.subItems = "";
+		c.currencyCosts = "";
+		CDClientManager::GetEntriesMutable<CDItemComponentTable>()[componentId] = c;
+	}
+}
+
+class MissionProgressTest : public GameDependenciesTest {
+protected:
+	Entity* baseEntity = nullptr;
+	MissionComponent* missionComponent = nullptr;
+	InventoryComponent* inventoryComponent = nullptr;
+
+	void SetUp() override {
+		SetUpDependencies();
+
+		auto& missions = CDClientManager::GetEntriesMutable<CDMissionsTable>();
+		auto& tasks = CDClientManager::GetEntriesMutable<CDMissionTasksTable>();
+		// Drop leftovers from prior tests so GetByMissionID does not return
+		// duplicate task pointers (which would make CheckCompletion wait on
+		// extra incomplete copies of the same task).
+		missions.clear();
+		tasks.clear();
+
+		missions.push_back(MakeSafeMission(kSmashMissionId, true));
+		missions.push_back(MakeSafeMission(kGatherMissionId, true));
+		missions.push_back(MakeSafeMission(kSmashAchievementId, false));
+		missions.push_back(MakeSafeMission(kMetaAchievementId, false));
+		missions.push_back(MakeSafeMission(kUid984MissionId, true));
+		missions.push_back(MakeSafeMission(kTwoTaskMissionId, true));
+
+		tasks.push_back(MakeTask(kSmashMissionId, eMissionTaskType::SMASH, kSmashTarget, 2, 1));
+		tasks.push_back(MakeTask(kGatherMissionId, eMissionTaskType::GATHER, static_cast<uint32_t>(kGatherLot), 3, 2));
+		tasks.push_back(MakeTask(kSmashAchievementId, eMissionTaskType::SMASH, kSmashTarget, 1, 3));
+		tasks.push_back(MakeTask(kMetaAchievementId, eMissionTaskType::META, kSmashAchievementId, 1, 4));
+		tasks.push_back(MakeTask(kUid984MissionId, eMissionTaskType::SMASH, kSmashTarget, 99, 984));
+		tasks.push_back(MakeTask(kTwoTaskMissionId, eMissionTaskType::SMASH, kSmashTarget, 1, 5));
+		tasks.push_back(MakeTask(kTwoTaskMissionId, eMissionTaskType::GATHER, static_cast<uint32_t>(kGatherLot), 1, 6));
+
+		RegisterLotAsItem(kGatherLot, kGatherComponentId);
+
+		baseEntity = new Entity(15, GameDependenciesTest::info);
+		missionComponent = baseEntity->AddComponent<MissionComponent>(-1);
+		inventoryComponent = baseEntity->AddComponent<InventoryComponent>(-1);
+	}
+
+	void TearDown() override {
+		delete baseEntity;
+		TearDownDependencies();
+	}
+};
+
+TEST_F(MissionProgressTest, SmashProgressReachesTargetAndMarksReadyToComplete) {
+	missionComponent->AcceptMission(kSmashMissionId, true);
+	Mission* mission = missionComponent->GetMission(kSmashMissionId);
+	ASSERT_NE(mission, nullptr);
+	ASSERT_EQ(mission->GetTasks().size(), 1u);
+	EXPECT_EQ(mission->GetMissionState(), eMissionState::ACTIVE);
+
+	missionComponent->Progress(eMissionTaskType::SMASH, kSmashTarget);
+	EXPECT_EQ(mission->GetTasks()[0]->GetProgress(), 1u);
+	EXPECT_EQ(mission->GetMissionState(), eMissionState::ACTIVE);
+
+	missionComponent->Progress(eMissionTaskType::SMASH, kSmashTarget);
+	EXPECT_EQ(mission->GetTasks()[0]->GetProgress(), 2u);
+	EXPECT_TRUE(mission->GetTasks()[0]->IsComplete());
+	EXPECT_EQ(mission->GetMissionState(), eMissionState::READY_TO_COMPLETE);
+}
+
+TEST_F(MissionProgressTest, SmashProgressIgnoresWrongTarget) {
+	missionComponent->AcceptMission(kSmashMissionId, true);
+	Mission* mission = missionComponent->GetMission(kSmashMissionId);
+	ASSERT_NE(mission, nullptr);
+
+	missionComponent->Progress(eMissionTaskType::SMASH, kSmashTarget + 1);
+	EXPECT_EQ(mission->GetTasks()[0]->GetProgress(), 0u);
+	EXPECT_EQ(mission->GetMissionState(), eMissionState::ACTIVE);
+}
+
+TEST_F(MissionProgressTest, SmashProgressDoesNotExceedTargetValue) {
+	missionComponent->AcceptMission(kSmashMissionId, true);
+	Mission* mission = missionComponent->GetMission(kSmashMissionId);
+	ASSERT_NE(mission, nullptr);
+
+	missionComponent->Progress(eMissionTaskType::SMASH, kSmashTarget);
+	missionComponent->Progress(eMissionTaskType::SMASH, kSmashTarget);
+	missionComponent->Progress(eMissionTaskType::SMASH, kSmashTarget);
+	EXPECT_EQ(mission->GetTasks()[0]->GetProgress(), 2u);
+}
+
+TEST_F(MissionProgressTest, AddProgressClampsAboveTargetAndBelowZero) {
+	missionComponent->AcceptMission(kSmashMissionId, true);
+	MissionTask* task = missionComponent->GetMission(kSmashMissionId)->GetTasks()[0];
+	ASSERT_NE(task, nullptr);
+
+	task->AddProgress(100);
+	EXPECT_EQ(task->GetProgress(), 2u); // targetValue
+
+	task->AddProgress(-100);
+	EXPECT_EQ(task->GetProgress(), 0u);
+}
+
+TEST_F(MissionProgressTest, Uid984CompletesAtProgressThreeRegardlessOfTargetValue) {
+	missionComponent->AcceptMission(kUid984MissionId, true);
+	Mission* mission = missionComponent->GetMission(kUid984MissionId);
+	ASSERT_NE(mission, nullptr);
+	MissionTask* task = mission->GetTasks()[0];
+	ASSERT_EQ(task->GetClientInfo().uid, 984u);
+	EXPECT_FALSE(task->IsComplete());
+
+	task->AddProgress(3);
+	EXPECT_EQ(task->GetProgress(), 3u);
+	EXPECT_TRUE(task->IsComplete());
+}
+
+TEST_F(MissionProgressTest, TwoTaskMissionStaysActiveUntilEveryTaskCompletes) {
+	missionComponent->AcceptMission(kTwoTaskMissionId, true);
+	Mission* mission = missionComponent->GetMission(kTwoTaskMissionId);
+	ASSERT_NE(mission, nullptr);
+	ASSERT_EQ(mission->GetTasks().size(), 2u);
+
+	missionComponent->Progress(eMissionTaskType::SMASH, kSmashTarget);
+	EXPECT_EQ(mission->GetMissionState(), eMissionState::ACTIVE);
+
+	inventoryComponent->AddItem(kGatherLot, 1, eLootSourceType::NONE, eInventoryType::ITEMS);
+	missionComponent->Progress(eMissionTaskType::GATHER, kGatherLot);
+	EXPECT_EQ(mission->GetMissionState(), eMissionState::READY_TO_COMPLETE);
+}
+
+TEST_F(MissionProgressTest, GatherCatchupOnAcceptUsesExistingInventoryCount) {
+	inventoryComponent->AddItem(kGatherLot, 3, eLootSourceType::NONE, eInventoryType::ITEMS);
+	missionComponent->AcceptMission(kGatherMissionId, true);
+
+	Mission* mission = missionComponent->GetMission(kGatherMissionId);
+	ASSERT_NE(mission, nullptr);
+	EXPECT_EQ(mission->GetTasks()[0]->GetProgress(), 3u);
+	EXPECT_EQ(mission->GetMissionState(), eMissionState::READY_TO_COMPLETE);
+}
+
+TEST_F(MissionProgressTest, GatherNegativeDeltaRewindsProgressWhenItemIsRemoved) {
+	inventoryComponent->AddItem(kGatherLot, 3, eLootSourceType::NONE, eInventoryType::ITEMS);
+	missionComponent->AcceptMission(kGatherMissionId, true);
+	Mission* mission = missionComponent->GetMission(kGatherMissionId);
+	ASSERT_NE(mission, nullptr);
+	ASSERT_EQ(mission->GetMissionState(), eMissionState::READY_TO_COMPLETE);
+
+	ASSERT_TRUE(inventoryComponent->RemoveItem(kGatherLot, 1, eInventoryType::ITEMS));
+	missionComponent->Progress(eMissionTaskType::GATHER, kGatherLot, LWOOBJID_EMPTY, "", -1);
+
+	EXPECT_EQ(mission->GetTasks()[0]->GetProgress(), 2u);
+	EXPECT_EQ(mission->GetMissionState(), eMissionState::ACTIVE);
+}
+
+TEST_F(MissionProgressTest, CompletedMissionDoesNotProgressFurther) {
+	missionComponent->AcceptMission(kSmashMissionId, true);
+	missionComponent->CompleteMission(kSmashMissionId, true, false);
+	ASSERT_EQ(missionComponent->GetMissionState(kSmashMissionId), eMissionState::COMPLETE);
+
+	const uint32_t progressBefore = missionComponent->GetMission(kSmashMissionId)->GetTasks()[0]->GetProgress();
+	missionComponent->Progress(eMissionTaskType::SMASH, kSmashTarget);
+	EXPECT_EQ(missionComponent->GetMission(kSmashMissionId)->GetTasks()[0]->GetProgress(), progressBefore);
+	EXPECT_EQ(missionComponent->GetMissionState(kSmashMissionId), eMissionState::COMPLETE);
+}
+
+TEST_F(MissionProgressTest, CompletingAchievementDefersReentrantMetaProgress) {
+	// Mirrors the #1973 UB: Complete() calls Progress(META) while the outer
+	// Progress() is still iterating m_Missions. The deferred drain must still
+	// accept the META achievement afterwards.
+	missionComponent->AcceptMission(kSmashAchievementId, true);
+	ASSERT_TRUE(missionComponent->HasMission(kSmashAchievementId));
+	EXPECT_FALSE(missionComponent->HasMission(kMetaAchievementId));
+
+	EXPECT_NO_FATAL_FAILURE(
+		missionComponent->Progress(eMissionTaskType::SMASH, kSmashTarget));
+
+	EXPECT_EQ(missionComponent->GetMissionState(kSmashAchievementId), eMissionState::COMPLETE);
+	EXPECT_TRUE(missionComponent->HasMission(kMetaAchievementId));
+	Mission* meta = missionComponent->GetMission(kMetaAchievementId);
+	ASSERT_NE(meta, nullptr);
+	EXPECT_TRUE(
+		meta->GetMissionState() == eMissionState::COMPLETE ||
+		meta->GetMissionState() == eMissionState::READY_TO_COMPLETE);
+}
+
+TEST_F(MissionProgressTest, ScriptProgressMatchesTalkToNpcStyleTarget) {
+	constexpr uint32_t kScriptMissionId = 91007;
+	auto& missions = CDClientManager::GetEntriesMutable<CDMissionsTable>();
+	missions.push_back(MakeSafeMission(kScriptMissionId, true));
+	auto& tasks = CDClientManager::GetEntriesMutable<CDMissionTasksTable>();
+	tasks.push_back(MakeTask(kScriptMissionId, eMissionTaskType::SCRIPT, 4242, 1, 7));
+
+	missionComponent->AcceptMission(kScriptMissionId, true);
+	Mission* mission = missionComponent->GetMission(kScriptMissionId);
+	ASSERT_NE(mission, nullptr);
+
+	missionComponent->Progress(eMissionTaskType::SCRIPT, 4242);
+	EXPECT_EQ(mission->GetTasks()[0]->GetProgress(), 1u);
+	EXPECT_EQ(mission->GetMissionState(), eMissionState::READY_TO_COMPLETE);
 }
