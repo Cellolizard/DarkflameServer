@@ -13,6 +13,17 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <string>
+
+// Helper: assert two BitStreams contain byte-identical data.
+static void ExpectBitStreamsEqual(const RakNet::BitStream& a, const RakNet::BitStream& b) {
+    ASSERT_EQ(a.GetNumberOfBitsUsed(), b.GetNumberOfBitsUsed())
+        << "bit counts differ";
+    const auto bytes = a.GetNumberOfBytesUsed();
+    ASSERT_EQ(bytes, b.GetNumberOfBytesUsed());
+    EXPECT_EQ(0, std::memcmp(a.GetData(), b.GetData(), bytes))
+        << "byte payload differs";
+}
 
 // ===========================================================================
 // Single primitive round-trips
@@ -688,4 +699,92 @@ TEST(BitStreamExtended, AlternatingBoolAndUint8_RoundTrip) {
         EXPECT_EQ(b, i % 2 == 0) << "bool mismatch at i=" << i;
         EXPECT_EQ(u, static_cast<uint8_t>(i)) << "uint8 mismatch at i=" << i;
     }
+}
+
+// ===========================================================================
+// Bulk-vs-per-char equivalence
+//
+// Locks in the guarantee that `bitStream.Write(buf, N)` produces byte-identical
+// output to a per-character loop `for(...) bitStream.Write<char>(buf[k])`. This
+// is the substitution that the GameMessages.cpp bulk-write refactor depends on.
+// The uint16_t variant covers wide-character string writes on DLU target
+// platforms (all little-endian); the equivalence holds whenever
+// BitStream::DoEndianSwap() returns false, which is the case for x86/ARM hosts
+// talking RakNet's little-endian wire format.
+// ===========================================================================
+
+TEST(BitStreamExtended, BulkVsPerChar_AsciiString_ByteAligned) {
+    const std::string s = "Hello, RakNet world!";
+
+    RakNet::BitStream bulkStream;
+    bulkStream.Write(s.data(), static_cast<unsigned int>(s.size()));
+
+    RakNet::BitStream perCharStream;
+    for (char c : s) {
+        perCharStream.Write<char>(c);
+    }
+
+    ExpectBitStreamsEqual(bulkStream, perCharStream);
+}
+
+TEST(BitStreamExtended, BulkVsPerChar_AsciiString_NonByteAligned) {
+    // Write a stray bit first to force the stream off byte alignment, then the
+    // string. Both paths now hit the WriteBits route inside Write(buf, N).
+    const std::string s = "alignment test";
+
+    RakNet::BitStream bulkStream;
+    bulkStream.Write<bool>(true);
+    bulkStream.Write(s.data(), static_cast<unsigned int>(s.size()));
+
+    RakNet::BitStream perCharStream;
+    perCharStream.Write<bool>(true);
+    for (char c : s) {
+        perCharStream.Write<char>(c);
+    }
+
+    ExpectBitStreamsEqual(bulkStream, perCharStream);
+}
+
+TEST(BitStreamExtended, BulkVsPerChar_EmptyString) {
+    RakNet::BitStream bulkStream;
+    bulkStream.Write("", 0u);
+
+    RakNet::BitStream perCharStream;
+    // Per-char loop over an empty string writes nothing — equivalent.
+
+    ExpectBitStreamsEqual(bulkStream, perCharStream);
+}
+
+TEST(BitStreamExtended, BulkVsPerUint16_WideString_ByteAligned) {
+    const std::u16string s = u"Hello, wide world!";
+
+    RakNet::BitStream bulkStream;
+    bulkStream.Write(
+        reinterpret_cast<const char*>(s.data()),
+        static_cast<unsigned int>(s.size() * sizeof(char16_t)));
+
+    RakNet::BitStream perCharStream;
+    for (char16_t c : s) {
+        perCharStream.Write<uint16_t>(static_cast<uint16_t>(c));
+    }
+
+    ExpectBitStreamsEqual(bulkStream, perCharStream);
+}
+
+TEST(BitStreamExtended, BulkVsPerUint16_WideString_NonByteAligned) {
+    const std::u16string s = u"misaligned";
+
+    RakNet::BitStream bulkStream;
+    bulkStream.Write<bool>(false);
+    bulkStream.Write(
+        reinterpret_cast<const char*>(s.data()),
+        static_cast<unsigned int>(s.size() * sizeof(char16_t)));
+
+    RakNet::BitStream perCharStream;
+    perCharStream.Write<bool>(false);
+    for (char16_t c : s) {
+        perCharStream.Write<uint16_t>(static_cast<uint16_t>(c));
+    }
+
+    ExpectBitStreamsEqual(bulkStream, perCharStream);
 }

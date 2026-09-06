@@ -115,9 +115,7 @@ void GameMessages::SendFireEventClientSide(const LWOOBJID& objectID, const Syste
 	//bitStream.Write(args);
 	uint32_t argSize = args.size();
 	bitStream.Write(argSize);
-	for (uint32_t k = 0; k < argSize; k++) {
-		bitStream.Write<uint16_t>(args[k]);
-	}
+	bitStream.Write(reinterpret_cast<const char*>(args.data()), argSize * sizeof(char16_t));
 	bitStream.Write(object);
 	bitStream.Write0();
 	//bitStream.Write(param1);
@@ -225,15 +223,11 @@ void GameMessages::SendInvalidZoneTransferList(Entity* entity, const SystemAddre
 
 	uint32_t CustomerFeedbackURLLength = feedbackURL.size();
 	bitStream.Write(CustomerFeedbackURLLength);
-	for (uint32_t k = 0; k < CustomerFeedbackURLLength; k++) {
-		bitStream.Write<uint16_t>(feedbackURL[k]);
-	}
+	bitStream.Write(reinterpret_cast<const char*>(feedbackURL.data()), CustomerFeedbackURLLength * sizeof(char16_t));
 
 	uint32_t InvalidMapTransferListLength = invalidMapTransferList.size();
 	bitStream.Write(InvalidMapTransferListLength);
-	for (uint32_t k = 0; k < InvalidMapTransferListLength; k++) {
-		bitStream.Write<uint16_t>(invalidMapTransferList[k]);
-	}
+	bitStream.Write(reinterpret_cast<const char*>(invalidMapTransferList.data()), InvalidMapTransferListLength * sizeof(char16_t));
 
 	bitStream.Write(feedbackOnExit);
 	bitStream.Write(feedbackOnInvalidTransfer);
@@ -329,9 +323,7 @@ void GameMessages::SendPlayNDAudioEmitter(Entity* entity, const SystemAddress& s
 
 	uint32_t length = audioGUID.size();
 	bitStream.Write(length);
-	for (uint32_t k = 0; k < length; k++) {
-		bitStream.Write<char>(audioGUID[k]);
-	}
+	bitStream.Write(audioGUID.data(), length);
 
 	bitStream.Write<uint32_t>(0); // size of NDAudioMetaEventName (then print the string like the guid)
 	bitStream.Write0(); // result {bool}
@@ -622,9 +614,7 @@ void GameMessages::SendUIMessageServerToSingleClient(Entity* entity, const Syste
 	uint32_t strMessageNameLength = message.size();
 	bitStream.Write(strMessageNameLength);
 
-	for (uint32_t k = 0; k < strMessageNameLength; k++) {
-		bitStream.Write<char>(message[k]);
-	}
+	bitStream.Write(message.data(), strMessageNameLength);
 
 	SEND_PACKET;
 }
@@ -641,9 +631,7 @@ void GameMessages::SendUIMessageServerToSingleClient(const std::string& message,
 	uint32_t strMessageNameLength = message.size();
 	bitStream.Write(strMessageNameLength);
 
-	for (uint32_t k = 0; k < strMessageNameLength; k++) {
-		bitStream.Write<char>(message[k]);
-	}
+	bitStream.Write(message.data(), strMessageNameLength);
 
 	SEND_PACKET;
 }
@@ -660,9 +648,7 @@ void GameMessages::SendUIMessageServerToAllClients(const std::string& message, A
 	uint32_t strMessageNameLength = message.size();
 	bitStream.Write(strMessageNameLength);
 
-	for (uint32_t k = 0; k < strMessageNameLength; k++) {
-		bitStream.Write<char>(message[k]);
-	}
+	bitStream.Write(message.data(), strMessageNameLength);
 
 	SEND_PACKET_BROADCAST;
 }
@@ -675,9 +661,7 @@ void GameMessages::SendPlayEmbeddedEffectOnAllClientsNearObject(Entity* entity, 
 	bitStream.Write(MessageType::Game::PLAY_EMBEDDED_EFFECT_ON_ALL_CLIENTS_NEAR_OBJECT);
 
 	bitStream.Write<uint32_t>(effectName.length());
-	for (uint32_t k = 0; k < effectName.length(); k++) {
-		bitStream.Write<uint16_t>(effectName[k]);
-	}
+	bitStream.Write(reinterpret_cast<const char*>(effectName.data()), effectName.length() * sizeof(char16_t));
 	bitStream.Write(fromObjectID);
 	bitStream.Write(radius);
 
@@ -755,9 +739,7 @@ void GameMessages::SendBroadcastTextToChatbox(Entity* entity, const SystemAddres
 
 	uint32_t wsTextLength = wsText.size();
 	bitStream.Write(wsTextLength);
-	for (uint32_t k = 0; k < wsTextLength; k++) {
-		bitStream.Write<uint16_t>(wsText[k]);
-	}
+	bitStream.Write(reinterpret_cast<const char*>(wsText.data()), wsTextLength * sizeof(char16_t));
 
 	SEND_PACKET_BROADCAST;
 }
@@ -882,9 +864,7 @@ void GameMessages::SendDie(Entity* entity, const LWOOBJID& killerID, const LWOOB
 
 	uint32_t deathTypeLength = deathType.size();
 	bitStream.Write(deathTypeLength);
-	for (uint32_t k = 0; k < deathTypeLength; k++) {
-		bitStream.Write<uint16_t>(deathType[k]);
-	}
+	bitStream.Write(reinterpret_cast<const char*>(deathType.data()), deathTypeLength * sizeof(char16_t));
 
 	bitStream.Write(directionRelative_AngleXZ);
 	bitStream.Write(directionRelative_AngleY);
@@ -1016,9 +996,7 @@ void GameMessages::SendStop2DAmbientSound(Entity* entity, bool force, std::strin
 	bitStream.Write(force);
 	bitStream.Write(audioGUIDSize);
 
-	for (uint32_t k = 0; k < audioGUIDSize; k++) {
-		bitStream.Write<char>(audioGUID[k]);
-	}
+	bitStream.Write(audioGUID.data(), audioGUIDSize);
 
 	bitStream.Write(result);
 
@@ -1036,9 +1014,7 @@ void GameMessages::SendPlay2DAmbientSound(Entity* entity, std::string audioGUID,
 	uint32_t audioGUIDSize = audioGUID.size();
 
 	bitStream.Write(audioGUIDSize);
-	for (uint32_t k = 0; k < audioGUIDSize; k++) {
-		bitStream.Write<char>(audioGUID[k]);
-	}
+	bitStream.Write(audioGUID.data(), audioGUIDSize);
 	bitStream.Write(result);
 
 	SystemAddress sysAddr = entity->GetSystemAddress();
