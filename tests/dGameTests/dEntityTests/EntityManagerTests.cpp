@@ -15,6 +15,7 @@
 class EntityManagerTest : public GameDependenciesTest {
 protected:
 	void SetUp() override {
+		SKIP_IF_NO_CDCLIENT_SQLITE();
 		SetUpDependencies();
 	}
 

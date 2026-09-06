@@ -65,14 +65,27 @@ protected:
 	}
 
 	void TearDownDependencies() {
-		if (Game::server) delete Game::server;
-		if (Game::entityManager) delete Game::entityManager;
-		if (Game::zoneManager) delete Game::zoneManager;
+		if (Game::server) {
+			delete Game::server;
+			Game::server = nullptr;
+		}
+		if (Game::entityManager) {
+			delete Game::entityManager;
+			Game::entityManager = nullptr;
+		}
+		if (Game::zoneManager) {
+			delete Game::zoneManager;
+			Game::zoneManager = nullptr;
+		}
 		if (Game::logger) {
 			Game::logger->Flush();
 			delete Game::logger;
+			Game::logger = nullptr;
 		}
-		if (Game::config) delete Game::config;
+		if (Game::config) {
+			delete Game::config;
+			Game::config = nullptr;
+		}
 	}
 
 	EntityInfo info{};
@@ -85,8 +98,16 @@ protected:
 	static bool CdClientHasTable(const char* tableName);
 };
 
-// GTEST_SKIP() must run in the test body (it returns from the current
-// function). Wrapping it in a helper would only return from the helper.
+// GTEST_SKIP() must run in the test body or fixture SetUp (it returns from
+// the current function). Wrapping it in a helper would only return from the
+// helper.
+#define SKIP_IF_NO_CDCLIENT_SQLITE() \
+	do { \
+		if (!GameDependenciesTest::CdClientSqliteExists()) { \
+			GTEST_SKIP() << "CDClient fixture missing (resServer/CDServer.sqlite)"; \
+		} \
+	} while (0)
+
 #define SKIP_IF_NO_CDCLIENT_TABLE(tableName) \
 	do { \
 		if (!GameDependenciesTest::CdClientHasTable(tableName)) { \

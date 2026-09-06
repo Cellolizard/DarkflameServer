@@ -19,6 +19,7 @@ protected:
 	CBITSTREAM
 
 	void SetUp() override {
+		SKIP_IF_NO_CDCLIENT_SQLITE();
 		SetUpDependencies();
 
 		baseEntity = new Entity(15, GameDependenciesTest::info);
@@ -35,9 +36,13 @@ protected:
 
 	void TearDown() override {
 		// Prevent Entity destructor from double-deleting character.
-		baseEntity->SetCharacter(nullptr);
-		delete baseEntity;
+		if (baseEntity) {
+			baseEntity->SetCharacter(nullptr);
+			delete baseEntity;
+			baseEntity = nullptr;
+		}
 		delete character;
+		character = nullptr;
 		TearDownDependencies();
 	}
 };

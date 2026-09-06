@@ -14,6 +14,7 @@ protected:
 	BaseCombatAIComponent* combatAI = nullptr;
 
 	void SetUp() override {
+		SKIP_IF_NO_CDCLIENT_SQLITE();
 		SetUpDependencies();
 		baseEntity = new Entity(15, GameDependenciesTest::info);
 		combatAI = baseEntity->AddComponent<BaseCombatAIComponent>(-1);

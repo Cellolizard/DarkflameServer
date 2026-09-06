@@ -17,6 +17,7 @@ protected:
 	Entity* baseEntity = nullptr;
 
 	void SetUp() override {
+		SKIP_IF_NO_CDCLIENT_SQLITE();
 		SetUpDependencies();
 		info.lot = 999;
 		info.pos = NiPoint3(1.0f, 2.0f, 3.0f);
