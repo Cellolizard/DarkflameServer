@@ -8,15 +8,40 @@
 #include "GameDependencies.h"
 #include <gtest/gtest.h>
 
+#include "BaseCombatAIComponent.h"
+#include "Behavior.h"
+#include "BehaviorContext.h"
 #include "BitStream.h"
+#include "DestroyableComponent.h"
 #include "Entity.h"
 #include "SkillComponent.h"
 #include "eReplicaComponentType.h"
+#include "eStateChangeType.h"
+
+// Registers an End callback on the skill context so tests can observe whether
+// SkillComponent::Interrupt actually ended active behaviors.
+class InterruptEndSpyBehavior final : public Behavior {
+public:
+	int endCount = 0;
+
+	explicit InterruptEndSpyBehavior(const uint32_t behaviorId) : Behavior(behaviorId) {}
+
+	void Handle(BehaviorContext* context, RakNet::BitStream& /*bitStream*/, BehaviorBranchContext branch) override {
+		context->RegisterEndBehavior(this, branch);
+	}
+
+	void End(BehaviorContext* /*context*/, BehaviorBranchContext /*branch*/, LWOOBJID /*second*/) override {
+		++endCount;
+	}
+};
 
 class SkillComponentTest : public GameDependenciesTest {
 protected:
+	static constexpr uint32_t kSpyBehaviorId = 900001;
+
 	Entity* baseEntity = nullptr;
 	SkillComponent* skillComponent = nullptr;
+	InterruptEndSpyBehavior* spy = nullptr;
 
 	void SetUp() override {
 		SetUpDependencies();
@@ -25,8 +50,24 @@ protected:
 	}
 
 	void TearDown() override {
+		// Destroy the entity first so SkillComponent/BehaviorContext dtors can
+		// still invoke End on a live spy.
 		delete baseEntity;
+		baseEntity = nullptr;
+		skillComponent = nullptr;
+		Behavior::Cache.erase(kSpyBehaviorId);
+		delete spy;
+		spy = nullptr;
 		TearDownDependencies();
+	}
+
+	void ArmInterruptSpy() {
+		if (spy == nullptr) {
+			spy = new InterruptEndSpyBehavior(kSpyBehaviorId);
+		}
+		spy->endCount = 0;
+		RakNet::BitStream bitStream;
+		ASSERT_TRUE(skillComponent->CastPlayerSkill(kSpyBehaviorId, 1, bitStream, LWOOBJID_EMPTY));
 	}
 };
 
@@ -90,4 +131,51 @@ TEST_F(SkillComponentTest, SerializeRegularDoesNotCrash) {
 	ASSERT_NE(skillComponent, nullptr);
 	CBITSTREAM
 	EXPECT_NO_FATAL_FAILURE(skillComponent->Serialize(bitStream, false));
+}
+
+// Non-immune targets still have their active behaviors ended.
+TEST_F(SkillComponentTest, InterruptEndsBehaviorsWhenNotImmune) {
+	ArmInterruptSpy();
+	ASSERT_EQ(spy->endCount, 0);
+
+	skillComponent->Interrupt();
+	EXPECT_EQ(spy->endCount, 1);
+}
+
+// Destroyable present but not interrupt-immune still interrupts.
+TEST_F(SkillComponentTest, InterruptEndsBehaviorsWhenDestroyableIsNotImmune) {
+	auto* destroyable = baseEntity->AddComponent<DestroyableComponent>(-1);
+	ASSERT_FALSE(destroyable->GetImmuneToInterrupt());
+
+	ArmInterruptSpy();
+	skillComponent->Interrupt();
+	EXPECT_EQ(spy->endCount, 1);
+}
+
+// ImmunityBehavior / SetStatusImmunity's interrupt flag must stop Interrupt().
+TEST_F(SkillComponentTest, InterruptDoesNotEndBehaviorsWhenImmuneToInterrupt) {
+	auto* destroyable = baseEntity->AddComponent<DestroyableComponent>(-1);
+	destroyable->SetStatusImmunity(
+		eStateChangeType::PUSH,
+		false, false, false,
+		true, // bImmuneToInterrupt
+		false, false, false, false, false);
+	ASSERT_TRUE(destroyable->GetImmuneToInterrupt());
+
+	ArmInterruptSpy();
+	skillComponent->Interrupt();
+	EXPECT_EQ(spy->endCount, 0);
+}
+
+// Existing stun-immune bail on BaseCombatAIComponent is preserved.
+TEST_F(SkillComponentTest, InterruptDoesNotEndBehaviorsWhenStunImmune) {
+	SKIP_IF_NO_CDCLIENT_SQLITE();
+
+	auto* combat = baseEntity->AddComponent<BaseCombatAIComponent>(-1);
+	combat->SetStunImmune(true);
+	ASSERT_TRUE(combat->GetStunImmune());
+
+	ArmInterruptSpy();
+	skillComponent->Interrupt();
+	EXPECT_EQ(spy->endCount, 0);
 }

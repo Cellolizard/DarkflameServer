@@ -1,23 +1,37 @@
 #include "InterruptBehavior.h"
 #include "BehaviorBranchContext.h"
 #include "BehaviorContext.h"
+#include "DestroyableComponent.h"
+#include "Entity.h"
 #include "Game.h"
 #include "Logger.h"
 #include "EntityManager.h"
 #include "SkillComponent.h"
 
+namespace {
+	bool IsImmuneToInterrupt(Entity* entity) {
+		if (entity == nullptr) return false;
+
+		auto* destroyableComponent = entity->GetComponent<DestroyableComponent>();
+		return destroyableComponent != nullptr && destroyableComponent->GetImmuneToInterrupt();
+	}
+
+	bool IsImmuneToInterrupt(const LWOOBJID entityId) {
+		return IsImmuneToInterrupt(Game::entityManager->GetEntity(entityId));
+	}
+}
 
 void InterruptBehavior::Handle(BehaviorContext* context, RakNet::BitStream& bitStream, BehaviorBranchContext branch) {
 	LWOOBJID usedTarget = m_target ? branch.target : context->originator;
 
 	if (usedTarget != context->originator) {
-		bool isTargetImmuneStuns = false;
-		if (!bitStream.Read(isTargetImmuneStuns)) {
+		bool isTargetImmune = false;
+		if (!bitStream.Read(isTargetImmune)) {
 			LOG("Unable to read isTargetImmune from bitStream, aborting Handle! %i", bitStream.GetNumberOfUnreadBits());
 			return;
 		};
 
-		if (isTargetImmuneStuns) return;
+		if (isTargetImmune) return;
 	}
 
 	if (!this->m_interruptBlock) {
@@ -64,6 +78,8 @@ void InterruptBehavior::Handle(BehaviorContext* context, RakNet::BitStream& bitS
 
 	if (skillComponent == nullptr) return;
 
+	if (IsImmuneToInterrupt(target)) return;
+
 	skillComponent->Interrupt();
 }
 
@@ -71,7 +87,9 @@ void InterruptBehavior::Handle(BehaviorContext* context, RakNet::BitStream& bitS
 void InterruptBehavior::Calculate(BehaviorContext* context, RakNet::BitStream& bitStream, BehaviorBranchContext branch) {
 	LWOOBJID usedTarget = m_target ? branch.target : context->originator;
 	if (usedTarget != context->originator) {
-		bitStream.Write(false);
+		const bool isTargetImmune = IsImmuneToInterrupt(usedTarget);
+		bitStream.Write(isTargetImmune);
+		if (isTargetImmune) return;
 	}
 
 	if (!this->m_interruptBlock) {
@@ -89,6 +107,8 @@ void InterruptBehavior::Calculate(BehaviorContext* context, RakNet::BitStream& b
 	auto* skillComponent = target->GetComponent<SkillComponent>();
 
 	if (skillComponent == nullptr) return;
+
+	if (IsImmuneToInterrupt(target)) return;
 
 	skillComponent->Interrupt();
 }
