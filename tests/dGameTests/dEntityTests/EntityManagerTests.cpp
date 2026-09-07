@@ -11,6 +11,7 @@
 #include "LDFFormat.h"
 #include "NiPoint3.h"
 #include "eReplicaComponentType.h"
+#include "CDComponentsRegistryTable.h"
 
 class EntityManagerTest : public GameDependenciesTest {
 protected:
@@ -122,26 +123,86 @@ TEST_F(EntityManagerTest, GetEntitiesByLOTFiltersCorrectly) {
 	EXPECT_NE(std::find(lotB.begin(), lotB.end(), b1), lotB.end());
 }
 
-// GetEntitiesByProximity should filter by distance — entities outside the radius
-// must not appear in the result.
-// SKIPPED: Entity::GetPosition() resolves through a physics component (Controllable
-// /Phantom/SimplePhysics). Without one, it returns NiPoint3Constant::ZERO regardless
-// of the EntityInfo.pos passed at construction. So plain test entities all report
-// position (0,0,0) and a 50-unit proximity query trivially includes everything.
-// TODO: add a SimplePhysicsComponent (or ControllablePhysics) to each test entity
-// and SetPosition on it — then this assertion becomes meaningful.
+namespace {
+	Entity* CreateProximityEntity(LOT lot, const NiPoint3& pos, bool withDestroyable) {
+		EntityInfo info{};
+		info.lot = lot;
+		info.pos = pos;
+		info.rot = QuatUtils::IDENTITY;
+		info.scale = 1.0f;
+		Entity* entity = Game::entityManager->CreateEntity(info);
+		if (!entity) return nullptr;
+		if (withDestroyable) entity->AddComponent<DestroyableComponent>(-1);
+		auto* physics = entity->AddComponent<SimplePhysicsComponent>(-1);
+		if (physics) physics->SetPosition(pos);
+		return entity;
+	}
+}
+
+// GetPosition reads the physics component, matching GetRotation. No physics => ZERO.
+TEST_F(EntityManagerTest, GetPositionReadsPhysicsComponent) {
+	EntityInfo testInfo{};
+	testInfo.lot = 410;
+	testInfo.pos = NiPoint3(3.0f, 4.0f, 5.0f);
+	// Keep this LOT out of the CDClient catalog so CreateEntity does not attach
+	// a physics component before the test adds SimplePhysicsComponent.
+	CDClientManager::GetEntriesMutable<CDComponentsRegistryTable>()[static_cast<uint64_t>(testInfo.lot)] = 0;
+
+	Entity* entity = Game::entityManager->CreateEntity(testInfo);
+	ASSERT_NE(entity, nullptr);
+	EXPECT_EQ(entity->GetPosition(), NiPoint3Constant::ZERO);
+
+	auto* physics = entity->AddComponent<SimplePhysicsComponent>(-1);
+	ASSERT_NE(physics, nullptr);
+	EXPECT_EQ(entity->GetPosition(), NiPoint3(3.0f, 4.0f, 5.0f));
+
+	physics->SetPosition(NiPoint3(10.0f, 0.0f, 0.0f));
+	EXPECT_EQ(entity->GetPosition(), NiPoint3(10.0f, 0.0f, 0.0f));
+}
+
+// GetEntitiesByProximity filters by distance. Entities outside the radius must
+// not appear. Positions are set on SimplePhysicsComponent so GetPosition is live.
 TEST_F(EntityManagerTest, GetEntitiesByProximityReturnsNearbyEntities) {
-	GTEST_SKIP() << "Needs SimplePhysicsComponent so Entity::GetPosition() reflects "
-	                "the configured location instead of always returning ZERO.";
+	const NiPoint3 reference(500.0f, 0.0f, 0.0f);
+	Entity* nearEntity = CreateProximityEntity(401, NiPoint3(510.0f, 0.0f, 0.0f), true);
+	Entity* farEntity = CreateProximityEntity(402, NiPoint3(800.0f, 0.0f, 0.0f), true);
+	ASSERT_NE(nearEntity, nullptr);
+	ASSERT_NE(farEntity, nullptr);
+
+	std::vector<Entity*> result = Game::entityManager->GetEntitiesByProximity(reference, 50.0f);
+	EXPECT_NE(std::find(result.begin(), result.end(), nearEntity), result.end());
+	EXPECT_EQ(std::find(result.begin(), result.end(), farEntity), result.end());
+}
+
+// Non-destroyables are not combat targets (FilterTargets already drops them),
+// so the proximity scan uses the DESTROYABLE index and skips them.
+TEST_F(EntityManagerTest, GetEntitiesByProximitySkipsNonDestroyables) {
+	const NiPoint3 reference(200.0f, 0.0f, 0.0f);
+	Entity* destroyable = CreateProximityEntity(403, reference, true);
+	Entity* scenery = CreateProximityEntity(404, reference, false);
+	ASSERT_NE(destroyable, nullptr);
+	ASSERT_NE(scenery, nullptr);
+
+	std::vector<Entity*> result = Game::entityManager->GetEntitiesByProximity(reference, 10.0f);
+	EXPECT_NE(std::find(result.begin(), result.end(), destroyable), result.end());
+	EXPECT_EQ(std::find(result.begin(), result.end(), scenery), result.end());
+}
+
+// DistanceSquared <= radiusSquared includes an entity sitting on the radius.
+TEST_F(EntityManagerTest, GetEntitiesByProximityIncludesRadiusBoundary) {
+	Entity* onBoundary = CreateProximityEntity(405, NiPoint3(10.0f, 0.0f, 0.0f), true);
+	ASSERT_NE(onBoundary, nullptr);
+
+	std::vector<Entity*> atRadius = Game::entityManager->GetEntitiesByProximity(NiPoint3Constant::ZERO, 10.0f);
+	EXPECT_NE(std::find(atRadius.begin(), atRadius.end(), onBoundary), atRadius.end());
+
+	std::vector<Entity*> inside = Game::entityManager->GetEntitiesByProximity(NiPoint3Constant::ZERO, 9.0f);
+	EXPECT_EQ(std::find(inside.begin(), inside.end(), onBoundary), inside.end());
 }
 
 // Radius > 1000 hits the client-side cap and the implementation returns an empty vector.
 TEST_F(EntityManagerTest, GetEntitiesByProximityRespectsRadiusCap) {
-	EntityInfo testInfo{};
-	testInfo.lot = 400;
-	testInfo.pos = NiPoint3(1.0f, 0.0f, 0.0f);
-
-	Entity* entity = Game::entityManager->CreateEntity(testInfo);
+	Entity* entity = CreateProximityEntity(400, NiPoint3(1.0f, 0.0f, 0.0f), true);
 	ASSERT_NE(entity, nullptr);
 
 	// Radius of exactly 1000 should still work (condition is <= 1000)

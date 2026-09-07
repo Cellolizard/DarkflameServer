@@ -1906,10 +1906,38 @@ bool Entity::IsSleeping() const {
 
 
 NiPoint3 Entity::GetPosition() const {
-	GameMessages::GetPosition posMsg{};
-	posMsg.pos = NiPoint3Constant::ZERO;
-	HandleMsg(posMsg);
-	return posMsg.pos;
+	// Same physics lookup as GetRotation. Avoids HandleMsg on TacArc/AoE proximity scans.
+	auto* controllable = GetComponent<ControllablePhysicsComponent>();
+
+	if (controllable != nullptr) {
+		return controllable->GetPosition();
+	}
+
+	auto* phantom = GetComponent<PhantomPhysicsComponent>();
+
+	if (phantom != nullptr) {
+		return phantom->GetPosition();
+	}
+
+	auto* simple = GetComponent<SimplePhysicsComponent>();
+
+	if (simple != nullptr) {
+		return simple->GetPosition();
+	}
+
+	auto* vehicle = GetComponent<HavokVehiclePhysicsComponent>();
+
+	if (vehicle != nullptr) {
+		return vehicle->GetPosition();
+	}
+
+	auto* rigidBodyPhantomPhysicsComponent = GetComponent<RigidbodyPhantomPhysicsComponent>();
+
+	if (rigidBodyPhantomPhysicsComponent != nullptr) {
+		return rigidBodyPhantomPhysicsComponent->GetPosition();
+	}
+
+	return NiPoint3Constant::ZERO;
 }
 
 const NiQuaternion& Entity::GetRotation() const {
