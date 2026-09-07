@@ -240,7 +240,7 @@ void UserManager::RequestCharacterList(const SystemAddress& sysAddr) {
 
 	std::vector<Character*> characters = u->GetCharacters();
 	bitStream.Write<uint8_t>(characters.size());
-	bitStream.Write<uint8_t>(0); //TODO: Pick the most recent played index.  character index in front, just picking 0
+	bitStream.Write<uint8_t>(0); // last-played: GetAccountCharacterIds is ORDER BY last_login DESC
 
 	for (uint32_t i = 0; i < characters.size(); ++i) {
 		bitStream.Write(characters[i]->GetObjectID());

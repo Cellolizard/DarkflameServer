@@ -180,7 +180,8 @@ std::vector<Entity*> TriggerComponent::GatherTargets(LUTriggers::Command* comman
 
 	if (command->target == "self") entities.push_back(m_Parent);
 	else if (command->target == "zone") {
-		/*TODO*/
+		// Empty GatherTargets skips the command. Four live ActivateSpawnerNetwork
+		// hits; not owned until spawners are proven.
 	} else if (command->target == "target" && optionalTarget) {
 		entities.push_back(optionalTarget);
 	} else if (command->target == "targetTeam" && optionalTarget) {

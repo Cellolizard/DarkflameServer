@@ -44,6 +44,6 @@ void JetPackBehavior::Load() {
 	this->m_VerticalVelocity = GetFloat("vertical_velocity", 1);
 	this->m_EnableHover = GetBoolean("enable_hover", false);
 
-	// TODO: Implement proper jetpack checks, so we can set this default to false
+	// Live packs use bypass_checks=1. bypass_checks=0 is TEST LOT 14442.
 	this->m_BypassChecks = GetBoolean("bypass_checks", true); 
 }

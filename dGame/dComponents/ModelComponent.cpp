@@ -240,7 +240,7 @@ void ModelComponent::RemoveBehavior(MoveToInventoryMessage& msg, const bool keep
 	Database::Get()->AddBehavior(info);
 
 	m_Behaviors.erase(m_Behaviors.begin() + msg.GetBehaviorIndex());
-	// TODO move to the inventory
+	// move to the inventory
 	if (m_Behaviors.empty()) {
 		auto* const simplePhysComponent = m_Parent->GetComponent<SimplePhysicsComponent>();
 		if (simplePhysComponent) {
