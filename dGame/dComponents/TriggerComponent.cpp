@@ -16,6 +16,7 @@
 #include "Game.h"
 #include "EntityManager.h"
 #include "MovementAIComponent.h"
+#include "MovingPlatformComponent.h"
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -152,7 +153,9 @@ void TriggerComponent::HandleTriggerCommand(LUTriggers::Command* command, Entity
 		case eTriggerCommandType::DESTROY_SPAWNER_NETWORK_OBJECTS:
 			HandleDestroySpawnerNetworkObjects(command->args);
 			break;
-		case eTriggerCommandType::GO_TO_WAYPOINT: break;
+		case eTriggerCommandType::GO_TO_WAYPOINT:
+			HandleGoToWaypoint(targetEntity, argArray);
+			break;
 		case eTriggerCommandType::ACTIVATE_PHYSICS:
 			HandleActivatePhysics(targetEntity, command->args);
 			break;
@@ -487,11 +490,47 @@ void TriggerComponent::HandleGoBackwardOnPath(Entity* targetEntity) {
 }
 
 void TriggerComponent::HandleStopPathing(Entity* targetEntity) {
+	auto* movingPlatformComponent = targetEntity->GetComponent<MovingPlatformComponent>();
+	if (movingPlatformComponent) {
+		movingPlatformComponent->StopPathing();
+		return;
+	}
+
 	auto* movementAIComponent = targetEntity->GetComponent<MovementAIComponent>();
 	// if (movementAIComponent) movementAIComponent->Pause();
 }
 
 void TriggerComponent::HandleStartPathing(Entity* targetEntity) {
+	auto* movingPlatformComponent = targetEntity->GetComponent<MovingPlatformComponent>();
+	if (movingPlatformComponent) {
+		movingPlatformComponent->StartPathing();
+		return;
+	}
+
 	auto* movementAIComponent = targetEntity->GetComponent<MovementAIComponent>();
 	// if (movementAIComponent) movementAIComponent->Resume();
+}
+
+void TriggerComponent::HandleGoToWaypoint(Entity* targetEntity, std::vector<std::string> argArray) {
+	if (argArray.empty()) return;
+
+	const auto index = GeneralUtils::TryParse<uint32_t>(argArray.at(0));
+	if (!index) return;
+
+	// Live FV tree/siege: "1,true" is index,stopAtWaypoint.
+	// lutrigger docs also allow a 3-arg form: index,allowDirectionChange,stopAtWaypoint.
+	bool stopAtWaypoint = true;
+	if (argArray.size() >= 3) {
+		stopAtWaypoint = argArray.at(2) == "true";
+	} else if (argArray.size() >= 2) {
+		stopAtWaypoint = argArray.at(1) == "true";
+	}
+
+	auto* movingPlatformComponent = targetEntity->GetComponent<MovingPlatformComponent>();
+	if (!movingPlatformComponent) {
+		LOG_DEBUG("Moving platform component not found!");
+		return;
+	}
+
+	movingPlatformComponent->GotoWaypoint(index.value(), stopAtWaypoint);
 }

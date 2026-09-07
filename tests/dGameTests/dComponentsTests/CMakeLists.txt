@@ -10,6 +10,7 @@ set(DCOMPONENTS_TESTS
 	"CharacterComponentTests.cpp"
 	"SkillComponentTests.cpp"
 	"GhostComponentTests.cpp"
+	"TriggerComponentTests.cpp"
 )
 
 # Get the folder name and prepend it to the files above
