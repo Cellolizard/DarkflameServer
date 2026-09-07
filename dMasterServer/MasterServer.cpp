@@ -674,7 +674,7 @@ void HandlePacket(Packet* packet) {
 			inStream.Read(theirInstanceID);
 
 			const auto& instance =
-				Game::im->FindInstance(theirZoneID, theirInstanceID);
+				Game::im->FindInstanceWithPrivate(theirZoneID, theirInstanceID);
 			if (instance) {
 				instance->AddPlayer(Player());
 			} else {
@@ -772,7 +772,7 @@ void HandlePacket(Packet* packet) {
 
 			LOG("Got world ready %i %i", zoneID, instanceID);
 
-			const auto& instance = Game::im->FindInstance(zoneID, instanceID);
+			const auto& instance = Game::im->FindInstanceWithPrivate(zoneID, instanceID);
 
 			if (instance == nullptr) {
 				LOG("Failed to find zone to ready");
@@ -870,13 +870,11 @@ int ShutdownSequence(int32_t signal) {
 	}
 
 	// A server might not be finished spinning up yet, remove all of those here.
+	// prune the unready ones before looping over all of them
+	Game::im->PruneUnreadyInstances();
 	for (const auto& instance : Game::im->GetInstances()) {
 		if (!instance) continue;
 
-		if (!instance->GetIsReady()) {
-			Game::im->RemoveInstance(instance);
-		}
-		
 		instance->SetIsShuttingDown(true);
 	}
 
