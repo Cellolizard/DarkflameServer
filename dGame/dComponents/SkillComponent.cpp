@@ -30,6 +30,73 @@
 ProjectileSyncEntry::ProjectileSyncEntry() {
 }
 
+CalculatedProjectile::StepResult CalculatedProjectile::Advance(
+	ProjectileSyncEntry& entry,
+	const float deltaTime,
+	const std::vector<Target>& targets) {
+	StepResult result;
+
+	if (!entry.calculation) {
+		return result;
+	}
+
+	entry.time += deltaTime;
+
+	const auto position = entry.startPosition + (entry.velocity * entry.time);
+	result.position = position;
+
+	const float hitRadiusSq = HitTubeRadius * HitTubeRadius;
+	const float trackRadiusSq = entry.trackRadius * entry.trackRadius;
+
+	const CalculatedProjectile::Target* intendedMiss = nullptr;
+	float intendedMissDistanceSq = 0.0f;
+
+	for (const auto& target : targets) {
+		const auto closestPoint = Vector3::ClosestPointOnLine(entry.lastPosition, position, target.position);
+		const auto distanceSq = Vector3::DistanceSquared(target.position, closestPoint);
+
+		if (distanceSq <= hitRadiusSq) {
+			result.hit = true;
+			result.hitTarget = target.id;
+			entry.branchContext.target = target.id;
+			entry.time = entry.maxTime;
+			entry.lastPosition = position;
+			return result;
+		}
+
+		if (target.id == entry.branchContext.target && target.id != LWOOBJID_EMPTY) {
+			intendedMiss = &target;
+			intendedMissDistanceSq = distanceSq;
+		}
+	}
+
+	// Seek only the original skill target, and only while a miss is still inside
+	// trackRadius. Do not retarget, and do not count the seek as a hit.
+	if (intendedMiss != nullptr
+		&& entry.trackTarget
+		&& entry.trackRadius > 0.0f
+		&& entry.time < entry.maxTime
+		&& intendedMissDistanceSq <= trackRadiusSq) {
+		const float speed = entry.velocity.Length();
+		const auto direction = (intendedMiss->position - position).Unitize();
+		if (speed > 0.0f && direction != NiPoint3Constant::ZERO) {
+			entry.velocity = direction * speed;
+			// Position is start + velocity * time; rebase so the new heading
+			// applies from here instead of the original launch point.
+			entry.maxTime -= entry.time;
+			if (entry.maxTime < 0.0f) {
+				entry.maxTime = 0.0f;
+			}
+			entry.startPosition = position;
+			entry.time = 0.0f;
+			result.steered = true;
+		}
+	}
+
+	entry.lastPosition = position;
+	return result;
+}
+
 std::unordered_map<uint32_t, uint32_t> SkillComponent::m_skillBehaviorCache = {};
 
 bool SkillComponent::CastPlayerSkill(const uint32_t behaviorId, const uint32_t skillUid, RakNet::BitStream& bitStream, const LWOOBJID target, uint32_t skillID) {
@@ -355,42 +422,27 @@ void SkillComponent::CalculateUpdate(const float deltaTime) {
 
 		if (!entry.calculation) continue;
 
-		entry.time += deltaTime;
-
 		auto* origin = Game::entityManager->GetEntity(entry.context->originator);
 
 		if (origin == nullptr) {
 			continue;
 		}
 
-		const auto targets = origin->GetTargetsInPhantom();
-
-		const auto position = entry.startPosition + (entry.velocity * entry.time);
-
-		for (const auto& targetId : targets) {
+		const auto targetIds = origin->GetTargetsInPhantom();
+		std::vector<CalculatedProjectile::Target> targets;
+		targets.reserve(targetIds.size());
+		for (const auto targetId : targetIds) {
 			auto* target = Game::entityManager->GetEntity(targetId);
-
-			const auto targetPosition = target->GetPosition();
-
-			const auto closestPoint = Vector3::ClosestPointOnLine(entry.lastPosition, position, targetPosition);
-
-			const auto distance = Vector3::DistanceSquared(targetPosition, closestPoint);
-
-			if (distance > 3 * 3) {
-				// TODO There is supposed to be an implementation for homing projectiles here
+			if (target == nullptr) {
 				continue;
 			}
-
-			entry.branchContext.target = targetId;
-
-			SyncProjectileCalculation(entry);
-
-			entry.time = entry.maxTime;
-
-			break;
+			targets.push_back({ targetId, target->GetPosition() });
 		}
 
-		entry.lastPosition = position;
+		const auto step = CalculatedProjectile::Advance(entry, deltaTime, targets);
+		if (step.hit) {
+			SyncProjectileCalculation(entry);
+		}
 
 		managedProjectile = entry;
 	}

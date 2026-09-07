@@ -11,6 +11,8 @@
 #include "BaseCombatAIComponent.h"
 #include "Behavior.h"
 #include "BehaviorContext.h"
+#include <vector>
+#include "NiPoint3.h"
 #include "BitStream.h"
 #include "DestroyableComponent.h"
 #include "Entity.h"
@@ -178,4 +180,296 @@ TEST_F(SkillComponentTest, InterruptDoesNotEndBehaviorsWhenStunImmune) {
 	ArmInterruptSpy();
 	skillComponent->Interrupt();
 	EXPECT_EQ(spy->endCount, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Calculated (NPC/server) projectile homing. Player weapons use
+// RegisterPlayerProjectile + client impact sync and are not this path.
+//
+// Catalog fixtures (BehaviorParameter on ProjectileAttack):
+//   skill 303 Spider Queen: track_target=1, track_radius=12, speed=40, max_distance=300
+//   skill 832 dragon:       track_target=1, track_radius=10, speed=50, max_distance=150
+// ---------------------------------------------------------------------------
+
+namespace {
+	constexpr LWOOBJID kIntendedTarget = static_cast<LWOOBJID>(1001ULL);
+	constexpr LWOOBJID kBystander = static_cast<LWOOBJID>(1002ULL);
+
+	constexpr float kSkill303Speed = 40.0f;
+	constexpr float kSkill303TrackRadius = 12.0f;
+	constexpr float kSkill303MaxTime = 300.0f / 40.0f;
+
+	constexpr float kSkill832Speed = 50.0f;
+	constexpr float kSkill832TrackRadius = 10.0f;
+	constexpr float kSkill832MaxTime = 150.0f / 50.0f;
+
+	constexpr float kDt = 1.0f / 30.0f;
+
+	ProjectileSyncEntry MakeCalculated(
+		const NiPoint3& start,
+		const NiPoint3& velocity,
+		float maxTime,
+		bool trackTarget,
+		float trackRadius,
+		LWOOBJID intendedTarget = kIntendedTarget) {
+		ProjectileSyncEntry entry;
+		entry.calculation = true;
+		entry.startPosition = start;
+		entry.lastPosition = start;
+		entry.velocity = velocity;
+		entry.maxTime = maxTime;
+		entry.time = 0.0f;
+		entry.trackTarget = trackTarget;
+		entry.trackRadius = trackRadius;
+		entry.branchContext.target = intendedTarget;
+		return entry;
+	}
+}
+
+// Direct hit inside the 3-unit tube still connects without needing to seek.
+TEST(CalculatedProjectileHoming, HitsInsideThreeUnitTubeWithoutSeek) {
+	auto entry = MakeCalculated(
+		NiPoint3(0.0f, 0.0f, 0.0f),
+		NiPoint3(kSkill303Speed, 0.0f, 0.0f),
+		kSkill303MaxTime,
+		true,
+		kSkill303TrackRadius);
+
+	const std::vector<CalculatedProjectile::Target> targets{
+		{ kIntendedTarget, NiPoint3(2.0f, 1.0f, 0.0f) },
+	};
+
+	const auto step = CalculatedProjectile::Advance(entry, kDt, targets);
+	EXPECT_TRUE(step.hit);
+	EXPECT_EQ(step.hitTarget, kIntendedTarget);
+	EXPECT_FALSE(step.steered);
+	EXPECT_EQ(entry.branchContext.target, kIntendedTarget);
+	EXPECT_GE(entry.time, entry.maxTime);
+}
+
+// A 5-unit miss with tracking off keeps the original heading (straight 3-unit tube).
+TEST(CalculatedProjectileHoming, MissWithoutTrackingDoesNotSteer) {
+	auto entry = MakeCalculated(
+		NiPoint3(0.0f, 0.0f, 0.0f),
+		NiPoint3(kSkill303Speed, 0.0f, 0.0f),
+		kSkill303MaxTime,
+		false,
+		kSkill303TrackRadius);
+
+	const NiPoint3 originalVelocity = entry.velocity;
+	const std::vector<CalculatedProjectile::Target> targets{
+		{ kIntendedTarget, NiPoint3(2.0f, 5.0f, 0.0f) },
+	};
+
+	const auto step = CalculatedProjectile::Advance(entry, kDt, targets);
+	EXPECT_FALSE(step.hit);
+	EXPECT_FALSE(step.steered);
+	EXPECT_EQ(entry.velocity, originalVelocity);
+	EXPECT_EQ(entry.branchContext.target, kIntendedTarget);
+}
+
+// Skill 303: a miss that is still inside trackRadius=12 steers toward the target
+// but is not treated as a hit this frame.
+TEST(CalculatedProjectileHoming, Skill303NearMissSteersWithoutHitting) {
+	auto entry = MakeCalculated(
+		NiPoint3(0.0f, 0.0f, 0.0f),
+		NiPoint3(kSkill303Speed, 0.0f, 0.0f),
+		kSkill303MaxTime,
+		true,
+		kSkill303TrackRadius);
+
+	const std::vector<CalculatedProjectile::Target> targets{
+		{ kIntendedTarget, NiPoint3(1.0f, 8.0f, 0.0f) },
+	};
+
+	const auto step = CalculatedProjectile::Advance(entry, kDt, targets);
+	EXPECT_FALSE(step.hit);
+	EXPECT_EQ(step.hitTarget, LWOOBJID_EMPTY);
+	ASSERT_TRUE(step.steered);
+	EXPECT_FLOAT_EQ(entry.velocity.Length(), kSkill303Speed);
+	EXPECT_GT(entry.velocity.y, 0.0f);
+	EXPECT_FLOAT_EQ(entry.time, 0.0f);
+	EXPECT_EQ(entry.startPosition, step.position);
+}
+
+// Skill 303: a miss outside trackRadius=12 is not pursued.
+TEST(CalculatedProjectileHoming, Skill303MissOutsideTrackRadiusDoesNotSteer) {
+	auto entry = MakeCalculated(
+		NiPoint3(0.0f, 0.0f, 0.0f),
+		NiPoint3(kSkill303Speed, 0.0f, 0.0f),
+		kSkill303MaxTime,
+		true,
+		kSkill303TrackRadius);
+
+	const NiPoint3 originalVelocity = entry.velocity;
+	const std::vector<CalculatedProjectile::Target> targets{
+		{ kIntendedTarget, NiPoint3(1.0f, 13.0f, 0.0f) },
+	};
+
+	const auto step = CalculatedProjectile::Advance(entry, kDt, targets);
+	EXPECT_FALSE(step.hit);
+	EXPECT_FALSE(step.steered);
+	EXPECT_EQ(entry.velocity, originalVelocity);
+}
+
+// Skill 832: trackRadius=10, speed=50. Near-miss inside 10 steers; outside does not.
+TEST(CalculatedProjectileHoming, Skill832NearMissSteersWithoutHitting) {
+	auto entry = MakeCalculated(
+		NiPoint3(0.0f, 0.0f, 0.0f),
+		NiPoint3(kSkill832Speed, 0.0f, 0.0f),
+		kSkill832MaxTime,
+		true,
+		kSkill832TrackRadius);
+
+	const std::vector<CalculatedProjectile::Target> targets{
+		{ kIntendedTarget, NiPoint3(1.0f, 6.0f, 0.0f) },
+	};
+
+	const auto step = CalculatedProjectile::Advance(entry, kDt, targets);
+	EXPECT_FALSE(step.hit);
+	ASSERT_TRUE(step.steered);
+	EXPECT_FLOAT_EQ(entry.velocity.Length(), kSkill832Speed);
+	EXPECT_GT(entry.velocity.y, 0.0f);
+}
+
+TEST(CalculatedProjectileHoming, Skill832MissOutsideTrackRadiusDoesNotSteer) {
+	auto entry = MakeCalculated(
+		NiPoint3(0.0f, 0.0f, 0.0f),
+		NiPoint3(kSkill832Speed, 0.0f, 0.0f),
+		kSkill832MaxTime,
+		true,
+		kSkill832TrackRadius);
+
+	const NiPoint3 originalVelocity = entry.velocity;
+	const std::vector<CalculatedProjectile::Target> targets{
+		{ kIntendedTarget, NiPoint3(1.0f, 11.0f, 0.0f) },
+	};
+
+	const auto step = CalculatedProjectile::Advance(entry, kDt, targets);
+	EXPECT_FALSE(step.hit);
+	EXPECT_FALSE(step.steered);
+	EXPECT_EQ(entry.velocity, originalVelocity);
+}
+
+// Being inside trackRadius is not an always-hit. The 3-unit tube still has to connect.
+TEST(CalculatedProjectileHoming, SeekIsNotAlwaysHit) {
+	auto entry = MakeCalculated(
+		NiPoint3(0.0f, 0.0f, 0.0f),
+		NiPoint3(kSkill303Speed, 0.0f, 0.0f),
+		kSkill303MaxTime,
+		true,
+		kSkill303TrackRadius);
+
+	const std::vector<CalculatedProjectile::Target> targets{
+		{ kIntendedTarget, NiPoint3(1.0f, 8.0f, 0.0f) },
+	};
+
+	const auto step = CalculatedProjectile::Advance(entry, kDt, targets);
+	ASSERT_TRUE(step.steered);
+	EXPECT_FALSE(step.hit);
+}
+
+// Seek only follows the original skill target, not a closer bystander in radius.
+TEST(CalculatedProjectileHoming, DoesNotRetargetToBystander) {
+	auto entry = MakeCalculated(
+		NiPoint3(0.0f, 0.0f, 0.0f),
+		NiPoint3(kSkill303Speed, 0.0f, 0.0f),
+		kSkill303MaxTime,
+		true,
+		kSkill303TrackRadius);
+
+	const std::vector<CalculatedProjectile::Target> targets{
+		{ kBystander, NiPoint3(1.0f, 4.0f, 0.0f) },
+		{ kIntendedTarget, NiPoint3(1.0f, 13.0f, 0.0f) },
+	};
+
+	const auto step = CalculatedProjectile::Advance(entry, kDt, targets);
+	EXPECT_FALSE(step.hit);
+	EXPECT_FALSE(step.steered);
+}
+
+// Stationary target inside trackRadius is eventually hit after steering; a target
+// that stays outside trackRadius is never hit (no aimbot past the radius).
+TEST(CalculatedProjectileHoming, Skill303SteersIntoStationaryTargetInsideRadius) {
+	auto entry = MakeCalculated(
+		NiPoint3(0.0f, 0.0f, 0.0f),
+		NiPoint3(kSkill303Speed, 0.0f, 0.0f),
+		kSkill303MaxTime,
+		true,
+		kSkill303TrackRadius);
+
+	const NiPoint3 targetPos(20.0f, 8.0f, 0.0f);
+	const std::vector<CalculatedProjectile::Target> targets{
+		{ kIntendedTarget, targetPos },
+	};
+
+	bool hit = false;
+	bool steered = false;
+	for (int i = 0; i < 90; ++i) {
+		const auto step = CalculatedProjectile::Advance(entry, kDt, targets);
+		steered = steered || step.steered;
+		if (step.hit) {
+			hit = true;
+			EXPECT_EQ(step.hitTarget, kIntendedTarget);
+			break;
+		}
+		if (entry.time >= entry.maxTime) {
+			break;
+		}
+	}
+
+	EXPECT_TRUE(steered);
+	EXPECT_TRUE(hit);
+}
+
+TEST(CalculatedProjectileHoming, Skill303NeverHitsTargetOutsideTrackRadius) {
+	auto entry = MakeCalculated(
+		NiPoint3(0.0f, 0.0f, 0.0f),
+		NiPoint3(kSkill303Speed, 0.0f, 0.0f),
+		kSkill303MaxTime,
+		true,
+		kSkill303TrackRadius);
+
+	const std::vector<CalculatedProjectile::Target> targets{
+		{ kIntendedTarget, NiPoint3(20.0f, 20.0f, 0.0f) },
+	};
+
+	bool hit = false;
+	bool steered = false;
+	for (int i = 0; i < 90; ++i) {
+		const auto step = CalculatedProjectile::Advance(entry, kDt, targets);
+		steered = steered || step.steered;
+		if (step.hit) {
+			hit = true;
+			break;
+		}
+		if (entry.time >= entry.maxTime) {
+			break;
+		}
+	}
+
+	EXPECT_FALSE(steered);
+	EXPECT_FALSE(hit);
+}
+
+// Player-synced projectiles (calculation=false) are ignored by the calculated stepper.
+TEST(CalculatedProjectileHoming, PlayerProjectileEntriesAreNotAdvanced) {
+	ProjectileSyncEntry entry;
+	entry.calculation = false;
+	entry.startPosition = NiPoint3(0.0f, 0.0f, 0.0f);
+	entry.lastPosition = entry.startPosition;
+	entry.velocity = NiPoint3(kSkill303Speed, 0.0f, 0.0f);
+	entry.trackTarget = true;
+	entry.trackRadius = kSkill303TrackRadius;
+	entry.branchContext.target = kIntendedTarget;
+
+	const std::vector<CalculatedProjectile::Target> targets{
+		{ kIntendedTarget, NiPoint3(1.0f, 1.0f, 0.0f) },
+	};
+
+	const auto step = CalculatedProjectile::Advance(entry, kDt, targets);
+	EXPECT_FALSE(step.hit);
+	EXPECT_FALSE(step.steered);
+	EXPECT_FLOAT_EQ(entry.time, 0.0f);
+	EXPECT_EQ(entry.velocity, NiPoint3(kSkill303Speed, 0.0f, 0.0f));
 }
