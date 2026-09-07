@@ -2,6 +2,7 @@
 
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "Entity.h"
 #include "Item.h"
@@ -39,8 +40,12 @@
 #include "CDScriptComponentTable.h"
 #include "CDObjectSkillsTable.h"
 #include "CDSkillBehaviorTable.h"
+#include "CDBehaviorParameterTable.h"
 #include "StringifiedEnum.h"
 #include "Amf3.h"
+#include "Behavior.h"
+#include "BehaviorTemplate.h"
+#include "BuffComponent.h"
 
 #include <ranges>
 
@@ -1056,6 +1061,33 @@ void InventoryComponent::HandlePossession(Item* item) {
 	GameMessages::SendMarkInventoryItemAsActive(m_Parent->GetObjectID(), true, eUnequippableActiveType::MOUNT, item->GetId(), m_Parent->GetSystemAddress());
 }
 
+namespace {
+	// Walk an equip-skill behavior tree and strip ApplyBuff nodes with
+	// fromUnEquip=true so the client drops cancelOnUnequip visuals.
+	// Wrapper behaviors (Duration, Start, ...) do not forward UnCast, and
+	// ApplyBuffBehavior::UnCast also requires the parent to be in EntityManager.
+	void RemoveApplyBuffsForBehavior(uint32_t behaviorId, BuffComponent* buffComponent, std::unordered_set<uint32_t>& visited) {
+		if (behaviorId == 0 || buffComponent == nullptr || !visited.insert(behaviorId).second) return;
+
+		auto* paramsTable = CDClientManager::GetTable<CDBehaviorParameterTable>();
+		if (paramsTable == nullptr) return;
+
+		if (Behavior::GetBehaviorTemplate(behaviorId) == BehaviorTemplate::APPLY_BUFF) {
+			const auto buffId = static_cast<int32_t>(paramsTable->GetValue(behaviorId, "buff_id"));
+			if (buffId != 0) {
+				buffComponent->RemoveBuff(buffId, true /* fromUnEquip */);
+			}
+			return;
+		}
+
+		for (const auto& [name, value] : paramsTable->GetParametersByBehaviorID(behaviorId)) {
+			if (name.find("action") != std::string::npos || name.rfind("behavior", 0) == 0) {
+				RemoveApplyBuffsForBehavior(static_cast<uint32_t>(value), buffComponent, visited);
+			}
+		}
+	}
+}
+
 void InventoryComponent::ApplyBuff(Item* item) const {
 	const auto buffs = FindBuffs(item, true);
 
@@ -1064,12 +1096,17 @@ void InventoryComponent::ApplyBuff(Item* item) const {
 	}
 }
 
-// TODO Something needs to send the remove buff GameMessage as well when it is unequipping items that would remove buffs.
 void InventoryComponent::RemoveBuff(Item* item) const {
 	const auto buffs = FindBuffs(item, false);
 
-	for (const auto buff : buffs) {
-		SkillComponent::HandleUnCast(buff, m_Parent->GetObjectID());
+	auto* buffComponent = m_Parent->GetComponent<BuffComponent>();
+	for (const auto behaviorId : buffs) {
+		if (buffComponent != nullptr) {
+			std::unordered_set<uint32_t> visited;
+			RemoveApplyBuffsForBehavior(behaviorId, buffComponent, visited);
+		}
+
+		SkillComponent::HandleUnCast(behaviorId, m_Parent->GetObjectID());
 	}
 }
 
