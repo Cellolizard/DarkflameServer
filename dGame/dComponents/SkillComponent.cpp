@@ -17,6 +17,7 @@
 #include "Game.h"
 #include "BitStreamUtils.h"
 #include "BaseCombatAIComponent.h"
+#include "DestroyableComponent.h"
 #include "ScriptComponent.h"
 #include "BuffComponent.h"
 #include "EchoStartSkill.h"
@@ -201,7 +202,9 @@ void SkillComponent::Reset() {
 }
 
 void SkillComponent::Interrupt() {
-	// TODO: need to check immunities on the destroyable component, but they aren't implemented
+	auto* destroyable = m_Parent->GetComponent<DestroyableComponent>();
+	if (destroyable != nullptr && destroyable->GetImmuneToInterrupt()) return;
+
 	auto* combat = m_Parent->GetComponent<BaseCombatAIComponent>();
 	if (combat != nullptr && combat->GetStunImmune()) return;
 
