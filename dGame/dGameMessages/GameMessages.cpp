@@ -2466,7 +2466,7 @@ void GameMessages::HandleBBBSaveRequest(RakNet::BitStream& inStream, Entity* ent
 		Note, in the live client it'll still display the bricks going out as they're being used, but on relog/world change,
 		they reappear as we didn't take them.
 
-		TODO Apparently the bricks are supposed to be taken via MoveInventoryBatch?
+		Apparently the bricks are supposed to be taken via MoveInventoryBatch?
 	*/
 
 	//Now, the cave of dragons:
@@ -4886,8 +4886,6 @@ void GameMessages::HandlePlayEmote(RakNet::BitStream& inStream, Entity* entity) 
 
 	LOG_DEBUG("Emote (%i) (%llu)", emoteID, targetID);
 
-	//TODO: If targetID != 0, and we have one of the "perform emote" missions, complete them.
-
 	if (emoteID == 0) return;
 	std::string sAnimationName = "deaded"; //Default name in case we fail to get the emote
 
@@ -5608,7 +5606,8 @@ void GameMessages::SendGetHotPropertyData(RakNet::BitStream& inStream, Entity* e
 	 *     [cloneid] - clone id
 	 *
 	 */
-	 // TODO This needs to be implemented when reputation is implemented for getting hot properties.
+	 // Reputation is implemented; property browse already ranks by it. The hole is the empty
+	 // send (commented dummy below), blocked on a live SEND_HOT_PROPERTY_DATA capture.
 	 /**
 	 bitStream.Write(entity->GetObjectID());
 	 bitStream.Write(MessageType::Game::SEND_HOT_PROPERTY_DATA);

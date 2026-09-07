@@ -61,7 +61,7 @@ void ControlBehaviors::SendBehaviorListToClient(const ControlBehaviorContext& co
 	GameMessages::SendUIMessageServerToSingleClient(context.modelOwner, context.modelOwner->GetSystemAddress(), "UpdateBehaviorList", behaviorsToSerialize);
 }
 
-// TODO This is also supposed to serialize the state of the behaviors in progress but those aren't implemented yet
+// Behavior execution exists. Missing piece is the executionState strip payload.
 void ControlBehaviors::SendBehaviorBlocksToClient(ControlBehaviorContext& context) {
 	if (!context) return;
 	BehaviorMessageBase behaviorMsg{ context.arguments };
