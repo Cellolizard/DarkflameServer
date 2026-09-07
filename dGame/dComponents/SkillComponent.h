@@ -7,6 +7,7 @@
 #define SKILLCOMPONENT_H
 
 #include <map>
+#include <vector>
 
 #include "BehaviorContext.h"
 #include "BitStream.h"
@@ -44,6 +45,33 @@ struct ProjectileSyncEntry {
 
 	explicit ProjectileSyncEntry();
 };
+
+/**
+ * Server-side (Calculate) projectile stepping. Player weapons use RegisterPlayerProjectile
+ * and client impact sync; they never go through this path.
+ *
+ * Hits use a 3-unit tube around this frame's travel segment. If trackTarget is set and a
+ * miss would occur while the intended target is still within trackRadius of that segment,
+ * velocity is redirected toward the target (seek-while-in-radius). That is not an always-hit:
+ * the 3-unit tube still has to connect, and targets outside trackRadius are not pursued.
+ */
+namespace CalculatedProjectile {
+	inline constexpr float HitTubeRadius = 3.0f;
+
+	struct Target {
+		LWOOBJID id = LWOOBJID_EMPTY;
+		NiPoint3 position{};
+	};
+
+	struct StepResult {
+		NiPoint3 position{};
+		bool hit = false;
+		LWOOBJID hitTarget = LWOOBJID_EMPTY;
+		bool steered = false;
+	};
+
+	StepResult Advance(ProjectileSyncEntry& entry, float deltaTime, const std::vector<Target>& targets);
+}
 
 struct SkillExecutionResult {
 	bool success;
