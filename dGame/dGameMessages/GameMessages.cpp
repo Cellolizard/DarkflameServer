@@ -4886,8 +4886,6 @@ void GameMessages::HandlePlayEmote(RakNet::BitStream& inStream, Entity* entity) 
 
 	LOG_DEBUG("Emote (%i) (%llu)", emoteID, targetID);
 
-	//TODO: If targetID != 0, and we have one of the "perform emote" missions, complete them.
-
 	if (emoteID == 0) return;
 	std::string sAnimationName = "deaded"; //Default name in case we fail to get the emote
 

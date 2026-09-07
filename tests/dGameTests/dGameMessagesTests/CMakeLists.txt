@@ -3,7 +3,8 @@ SET(DGAMEMESSAGES_TESTS
 	"LegacyGameMessageTests.cpp"
 	"MessageHandlerRegistryTests.cpp"
 	"InventoryHandlerTests.cpp"
-	"GameMessageDispatchTests.cpp")
+	"GameMessageDispatchTests.cpp"
+	"PlayEmoteTests.cpp")
 
 # Get the folder name and prepend it to the files above
 get_filename_component(thisFolderName ${CMAKE_CURRENT_SOURCE_DIR} NAME)
