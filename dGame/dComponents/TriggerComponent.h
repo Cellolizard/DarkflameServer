@@ -50,6 +50,7 @@ private:
 	void HandleStopPathing(Entity* targetEntity);
 	void HandleStartPathing(Entity* targetEntity);
 	void HandleSetPath(Entity* targetEntity, std::vector<std::string> argArray);
+	void HandleGoToWaypoint(Entity* targetEntity, std::vector<std::string> argArray);
 
 	LUTriggers::Trigger* m_Trigger;
 };
