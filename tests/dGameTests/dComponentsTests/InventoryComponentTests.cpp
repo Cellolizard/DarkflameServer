@@ -6,17 +6,31 @@
 #include "InventoryComponent.h"
 #include "Inventory.h"
 #include "Item.h"
+#include "BuffComponent.h"
+#include "DestroyableComponent.h"
 #include "eInventoryType.h"
 #include "eReplicaComponentType.h"
 #include "CDItemComponentTable.h"
 #include "CDComponentsRegistryTable.h"
+#include "CDObjectSkillsTable.h"
+#include "CDSkillBehaviorTable.h"
+#include "CDBehaviorParameterTable.h"
+#include "CDBehaviorTemplateTable.h"
 #include "CDClientManager.h"
+#include "MessageType/Game.h"
+#include "MessageType/Client.h"
+#include "ServiceType.h"
 
 // LOTs used across tests. They must be injected into CDClient tables to be "valid".
 static constexpr LOT TEST_LOT_STACKABLE   = 6194;  // arbitrary unique test LOT
 static constexpr LOT TEST_LOT_SINGLE      = 6195;
 static constexpr LOT TEST_LOT_EQUIPPABLE  = 6196;
+// Cole's Gi of Quakes: TargetCaster -> ApplyBuff (buff_id 3, cancel_on_unequip).
+// Buff 3 has no BuffParameters, so RemoveBuff's last packet is REMOVE_BUFF (no FX).
+static constexpr LOT TEST_LOT_APPLY_BUFF_ITEM = 16606;
+static constexpr int32_t TEST_APPLY_BUFF_ID = 3;
 static constexpr uint32_t TEST_ITEM_COMPONENT_ID = 9900;
+static constexpr uint32_t TEST_APPLY_BUFF_ITEM_COMPONENT_ID = TEST_ITEM_COMPONENT_ID + 3;
 
 // Helper: build a minimal CDItemComponent for a given component ID and stack size.
 static CDItemComponent MakeTestItemComponent(uint32_t id, uint32_t stackSize, const std::string& equipLocation = "") {
@@ -72,6 +86,64 @@ static void RegisterLotAsItem(LOT lot, uint32_t componentId) {
 	const uint64_t typeKey = (static_cast<uint64_t>(eReplicaComponentType::ITEM) << 32) | static_cast<uint64_t>(lot);
 	registryEntries[typeKey]            = componentId;
 	registryEntries[static_cast<uint64_t>(lot)] = 0; // "visited" sentinel
+}
+
+// Load the CDClient tables FindBuffs / ApplyBuff tree-walk need. Guarded so
+// later tests in the same process do not duplicate ObjectSkills rows.
+static void LoadEquipSkillTablesIfNeeded() {
+	if (CDClientManager::GetEntriesMutable<CDObjectSkillsTable>().empty()) {
+		CDObjectSkillsTable::Instance().LoadValuesFromDatabase();
+	}
+	if (CDClientManager::GetEntriesMutable<CDSkillBehaviorTable>().empty()) {
+		CDSkillBehaviorTable::Instance().LoadValuesFromDatabase();
+	}
+	if (CDClientManager::GetEntriesMutable<CDBehaviorParameterTable>().empty()) {
+		CDBehaviorParameterTable::Instance().LoadValuesFromDatabase();
+	}
+	if (CDClientManager::GetEntriesMutable<CDBehaviorTemplateTable>().empty()) {
+		CDBehaviorTemplateTable::Instance().LoadValuesFromDatabase();
+	}
+}
+
+// Read the most recent outbound packet and assert it is REMOVE_BUFF with the
+// given flags. Mirrors GameMessageTests' immediate-read of dServerMock.
+static void ExpectLastPacketIsRemoveBuff(LWOOBJID objectId, uint32_t buffId, bool fromUnEquip) {
+	auto* bitStream = static_cast<dServerMock*>(Game::server)->GetMostRecentBitStream();
+	ASSERT_NE(bitStream, nullptr);
+	bitStream->ResetReadPointer();
+
+	uint8_t rakNetPacketId{};
+	uint16_t remoteServiceType{};
+	uint32_t packetId{};
+	uint8_t always0{};
+	bitStream->Read(rakNetPacketId);
+	bitStream->Read(remoteServiceType);
+	bitStream->Read(packetId);
+	bitStream->Read(always0);
+	ASSERT_EQ(rakNetPacketId, 0x53);
+	ASSERT_EQ(remoteServiceType, static_cast<uint16_t>(ServiceType::CLIENT));
+	ASSERT_EQ(packetId, static_cast<uint32_t>(MessageType::Client::GAME_MSG));
+	ASSERT_EQ(always0, 0x00);
+
+	LWOOBJID sentObjectId{};
+	uint16_t gmId{};
+	bool fromRemoveBehavior{};
+	bool sentFromUnEquip{};
+	bool removeImmunity{};
+	uint32_t sentBuffId{};
+	bitStream->Read(sentObjectId);
+	bitStream->Read(gmId);
+	bitStream->Read(fromRemoveBehavior);
+	bitStream->Read(sentFromUnEquip);
+	bitStream->Read(removeImmunity);
+	bitStream->Read(sentBuffId);
+
+	EXPECT_EQ(sentObjectId, objectId);
+	EXPECT_EQ(gmId, static_cast<uint16_t>(MessageType::Game::REMOVE_BUFF));
+	EXPECT_FALSE(fromRemoveBehavior);
+	EXPECT_EQ(sentFromUnEquip, fromUnEquip);
+	EXPECT_FALSE(removeImmunity);
+	EXPECT_EQ(sentBuffId, buffId);
 }
 
 class InventoryTest : public GameDependenciesTest {
@@ -394,4 +466,84 @@ TEST_F(InventoryTest, CheckItemSetCrossInstanceCacheReuseDoesNotCrash) {
 TEST_F(InventoryTest, CheckItemSetRealLotDoesNotCrash) {
 	SKIP_IF_NO_CDCLIENT_TABLE("ItemSets");
 	EXPECT_NO_FATAL_FAILURE(inventoryComponent->CheckItemSet(7356));
+}
+
+// ---------------------------------------------------------------------------
+// Unequip remove-buff GameMessage
+//
+// Items whose equip skill is ApplyBuff (or TargetCaster -> ApplyBuff) must
+// send REMOVE_BUFF with fromUnEquip=true so the client drops cancelOnUnequip
+// visuals. HandleUnCast alone is not enough: wrappers may not UnCast children
+// and ApplyBuffBehavior::UnCast looks the parent up in EntityManager.
+// ---------------------------------------------------------------------------
+
+TEST_F(InventoryTest, RemoveBuffSendsRemoveBuffGameMessageWithFromUnEquip) {
+	SKIP_IF_NO_CDCLIENT_SQLITE();
+	SKIP_IF_NO_CDCLIENT_TABLE("ObjectSkills");
+	SKIP_IF_NO_CDCLIENT_TABLE("SkillBehavior");
+	SKIP_IF_NO_CDCLIENT_TABLE("BehaviorParameter");
+	SKIP_IF_NO_CDCLIENT_TABLE("BehaviorTemplate");
+	LoadEquipSkillTablesIfNeeded();
+
+	auto& itemEntries = CDClientManager::GetEntriesMutable<CDItemComponentTable>();
+	itemEntries[TEST_APPLY_BUFF_ITEM_COMPONENT_ID] =
+		MakeTestItemComponent(TEST_APPLY_BUFF_ITEM_COMPONENT_ID, 1, "chest");
+	RegisterLotAsItem(TEST_LOT_APPLY_BUFF_ITEM, TEST_APPLY_BUFF_ITEM_COMPONENT_ID);
+
+	auto* destroyable = baseEntity->AddComponent<DestroyableComponent>(-1);
+	destroyable->SetMaxHealth(100.0f);
+	destroyable->SetHealth(100);
+	auto* buffComponent = baseEntity->AddComponent<BuffComponent>(-1);
+	buffComponent->ApplyBuff(TEST_APPLY_BUFF_ID, 0.0f, LWOOBJID_EMPTY,
+		false, false, false, false, false, false, true, false);
+	ASSERT_TRUE(buffComponent->HasBuff(TEST_APPLY_BUFF_ID));
+
+	inventoryComponent->AddItem(TEST_LOT_APPLY_BUFF_ITEM, 1, eLootSourceType::NONE, eInventoryType::ITEMS);
+	Item* item = inventoryComponent->FindItemByLot(TEST_LOT_APPLY_BUFF_ITEM, eInventoryType::ITEMS);
+	ASSERT_NE(item, nullptr);
+
+	inventoryComponent->RemoveBuff(item);
+
+	ExpectLastPacketIsRemoveBuff(baseEntity->GetObjectID(), static_cast<uint32_t>(TEST_APPLY_BUFF_ID), true);
+
+	buffComponent->Update(0.0f);
+	EXPECT_FALSE(buffComponent->HasBuff(TEST_APPLY_BUFF_ID));
+}
+
+TEST_F(InventoryTest, UnEquipItemSendsRemoveBuffGameMessageWithFromUnEquip) {
+	SKIP_IF_NO_CDCLIENT_SQLITE();
+	SKIP_IF_NO_CDCLIENT_TABLE("ItemSets");
+	SKIP_IF_NO_CDCLIENT_TABLE("ObjectSkills");
+	SKIP_IF_NO_CDCLIENT_TABLE("SkillBehavior");
+	SKIP_IF_NO_CDCLIENT_TABLE("BehaviorParameter");
+	SKIP_IF_NO_CDCLIENT_TABLE("BehaviorTemplate");
+	LoadEquipSkillTablesIfNeeded();
+
+	auto& itemEntries = CDClientManager::GetEntriesMutable<CDItemComponentTable>();
+	itemEntries[TEST_APPLY_BUFF_ITEM_COMPONENT_ID] =
+		MakeTestItemComponent(TEST_APPLY_BUFF_ITEM_COMPONENT_ID, 1, "chest");
+	RegisterLotAsItem(TEST_LOT_APPLY_BUFF_ITEM, TEST_APPLY_BUFF_ITEM_COMPONENT_ID);
+
+	auto* destroyable = baseEntity->AddComponent<DestroyableComponent>(-1);
+	destroyable->SetMaxHealth(100.0f);
+	destroyable->SetHealth(100);
+	auto* buffComponent = baseEntity->AddComponent<BuffComponent>(-1);
+	buffComponent->ApplyBuff(TEST_APPLY_BUFF_ID, 0.0f, LWOOBJID_EMPTY,
+		false, false, false, false, false, false, true, false);
+	ASSERT_TRUE(buffComponent->HasBuff(TEST_APPLY_BUFF_ID));
+
+	inventoryComponent->AddItem(TEST_LOT_APPLY_BUFF_ITEM, 1, eLootSourceType::NONE, eInventoryType::ITEMS);
+	Item* item = inventoryComponent->FindItemByLot(TEST_LOT_APPLY_BUFF_ITEM, eInventoryType::ITEMS);
+	ASSERT_NE(item, nullptr);
+
+	item->Equip();
+	ASSERT_TRUE(item->IsEquipped());
+
+	item->UnEquip();
+
+	EXPECT_FALSE(item->IsEquipped());
+	ExpectLastPacketIsRemoveBuff(baseEntity->GetObjectID(), static_cast<uint32_t>(TEST_APPLY_BUFF_ID), true);
+
+	buffComponent->Update(0.0f);
+	EXPECT_FALSE(buffComponent->HasBuff(TEST_APPLY_BUFF_ID));
 }

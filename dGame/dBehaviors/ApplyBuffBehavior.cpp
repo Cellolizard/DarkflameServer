@@ -27,7 +27,8 @@ void ApplyBuffBehavior::UnCast(BehaviorContext* context, BehaviorBranchContext b
 
 	if (buffComponent == nullptr) return;
 
-	buffComponent->RemoveBuff(m_BuffId);
+	// UnCast is only invoked from item / item-set unequip (HandleUnCast).
+	buffComponent->RemoveBuff(m_BuffId, true /* fromUnEquip */);
 }
 
 void ApplyBuffBehavior::Calculate(BehaviorContext* context, RakNet::BitStream& bitStream, BehaviorBranchContext branch) {
