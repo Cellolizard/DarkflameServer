@@ -193,7 +193,7 @@ namespace Mail {
 
 		if (mailID > 0 && playerID == player->GetObjectID() && inv) {
 			auto playerMail = Database::Get()->GetMail(mailID);
-			if (!playerMail) {
+			if (!playerMail || playerMail->receiverId != player->GetObjectID()) {
 				response.status = eAttachmentCollectResponse::MailNotFound;
 			} else if (!inv->HasSpaceForLoot({ {playerMail->itemLOT, playerMail->itemCount} })) {
 				response.status = eAttachmentCollectResponse::NoSpaceInInventory;
@@ -225,15 +225,21 @@ namespace Mail {
 		DeleteResponse response;
 		response.mailID = mailID;
 
-		auto mailData = Database::Get()->GetMail(mailID);
-		if (mailData && !(mailData->itemLOT > 0 && mailData->itemCount > 0)) {
-			Database::Get()->DeleteMail(mailID);
-			response.status = eDeleteResponse::Success;
-		} else if (mailData && mailData->itemLOT > 0 && mailData->itemCount > 0) {
-			response.status = eDeleteResponse::HasAttachments;
-		} else {
-			response.status = eDeleteResponse::NotFound;
+		const auto mailData = Database::Get()->GetMail(mailID);
+		response.status = eDeleteResponse::NotFound;
+		if (mailData) {
+			if (mailData->receiverId != playerID) {
+				LOG("Player %llu attempted to delete mail owned by %llu. Possible spoof?", playerID, mailData->receiverId);
+			} else {
+				if (!(mailData->itemLOT > 0 && mailData->itemCount > 0)) {
+					Database::Get()->DeleteMail(mailID);
+					response.status = eDeleteResponse::Success;
+				} else if (mailData->itemLOT > 0 && mailData->itemCount > 0) {
+					response.status = eDeleteResponse::HasAttachments;
+				}
+			}
 		}
+
 		LOG("DeleteRequest status %s", StringifiedEnum::ToString(response.status).data());
 		response.Send(sysAddr);
 	}
@@ -253,11 +259,19 @@ namespace Mail {
 
 	void ReadRequest::Handle() {
 		ReadResponse response;
+		response.status = eReadResponse::UnknownError;
 		response.mailID = mailID;
 
-		if (Database::Get()->GetMail(mailID)) {
-			response.status = eReadResponse::Success;
-			Database::Get()->MarkMailRead(mailID);
+		const auto mail = Database::Get()->GetMail(mailID);
+		if (mail) {
+			if (mail->receiverId == player->GetObjectID()) {
+				response.status = eReadResponse::Success;
+				Database::Get()->MarkMailRead(mailID);
+			} else {
+				LOG("Player %llu tried to mark mail read for player %llu", mail->receiverId, player->GetObjectID());
+			}
+		} else {
+			LOG("No mail by ID %llu found to mark as read.", mailID);
 		}
 
 		LOG("ReadRequest %s", StringifiedEnum::ToString(response.status).data());
