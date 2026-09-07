@@ -329,9 +329,20 @@ std::vector<Entity*> EntityManager::GetEntitiesByLOT(const LOT& lot) const {
 
 std::vector<Entity*> EntityManager::GetEntitiesByProximity(NiPoint3 reference, float radius) const {
 	std::vector<Entity*> entities;
-	if (radius <= 1000.0f) { // The client has a 1000 unit limit on this same logic, so we'll use the same limit
-		for (auto* entity : m_Entities | std::views::values) {
-			if (NiPoint3::Distance(reference, entity->GetPosition()) <= radius) entities.push_back(entity);
+	// The client has a 1000 unit limit on this same logic, so we'll use the same limit.
+	// Negative radius never matches (distance is non-negative); keep that empty result
+	// when comparing DistanceSquared.
+	if (radius > 1000.0f || radius < 0.0f) return entities;
+
+	// TacArc/AoE Calculate already drop non-destroyables in FilterTargets, so scan
+	// the DESTROYABLE bucket from the byComponent index instead of every entity.
+	const auto it = m_EntitiesByComponent.find(eReplicaComponentType::DESTROYABLE);
+	if (it == m_EntitiesByComponent.end()) return entities;
+
+	const float radiusSquared = radius * radius;
+	for (auto* entity : it->second) {
+		if (NiPoint3::DistanceSquared(reference, entity->GetPosition()) <= radiusSquared) {
+			entities.push_back(entity);
 		}
 	}
 	return entities;

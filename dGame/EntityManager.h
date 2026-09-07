@@ -33,6 +33,8 @@ public:
 	std::vector<Entity*> GetEntitiesInGroup(const std::string& group);
 	std::vector<Entity*> GetEntitiesByComponent(eReplicaComponentType componentType) const;
 	std::vector<Entity*> GetEntitiesByLOT(const LOT& lot) const;
+	// Destroyables within radius. Radius > 1000 returns empty (client cap).
+	// TacArc/AoE Calculate use this, then FilterTargets for angle/height/faction.
 	std::vector<Entity*> GetEntitiesByProximity(NiPoint3 reference, float radius) const;
 	Entity* GetZoneControlEntity() const;
 
