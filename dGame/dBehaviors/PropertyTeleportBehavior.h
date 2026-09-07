@@ -17,5 +17,4 @@ public:
 
 private:
 	LWOMAPID m_MapId;
-	bool m_CancelIfInteracting;
 };
