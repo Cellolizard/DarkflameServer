@@ -7,17 +7,11 @@
 
 class NiPoint3;
 
-namespace tinyxml2 {
-	class XMLDocument;
-}
-
 class GhostComponent final : public Component {
 public:
 	static inline const eReplicaComponentType ComponentType = eReplicaComponentType::GHOST;
 	GhostComponent(Entity* parent, const int32_t componentID);
 	~GhostComponent() override;
-	void LoadFromXml(const tinyxml2::XMLDocument& doc) override;
-	void UpdateXml(tinyxml2::XMLDocument& doc) override;
 
 	void SetGhostOverride(bool value) { m_GhostOverride = value; };
 
@@ -48,7 +42,7 @@ public:
 	bool OnToggleGMInvis(GameMessages::GameMsg& msg);
 
 	bool OnGetGMInvis(GameMessages::GameMsg& msg);
-	
+
 	bool MsgGetObjectReportInfo(GameMessages::GameMsg& msg);
 
 private:
@@ -64,7 +58,7 @@ private:
 	bool m_GhostOverride;
 
 	bool m_IsGMInvisible{ false };
-	
+
 };
 
 #endif  //!__GHOSTCOMPONENT__H__
