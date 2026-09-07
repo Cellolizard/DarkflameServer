@@ -4,6 +4,7 @@
  */
 
 #include "GameMessageHandler.h"
+#include "MessageHandlerRegistry.h"
 #include "MissionComponent.h"
 #include "BitStreamUtils.h"
 #include "dServer.h"
@@ -41,16 +42,21 @@
 #include "StringifiedEnum.h"
 
 namespace {
-	using enum MessageType::Game;
-	using namespace GameMessages;
-	using MessageCreator = std::function<std::unique_ptr<GameMessages::GameMsg>()>;
-	std::map<MessageType::Game, MessageCreator> g_MessageHandlers = {
-		{ REQUEST_USE, []() { return std::make_unique<RequestUse>(); }},
-		{ REQUEST_SERVER_OBJECT_INFO, []() { return std::make_unique<RequestServerObjectInfo>(); } },
-		{ SHOOTING_GALLERY_FIRE, []() { return std::make_unique<ShootingGalleryFire>(); } },
-		{ PICKUP_ITEM, []() { return std::make_unique<PickupItem>(); } },
-	};
-};
+	// Static-init registers the existing migrated handlers in the process-wide
+	// MessageHandlerRegistry before WorldServer enters its dispatch loop. New
+	// handlers should prefer registering from their own .cpp files using the
+	// same idiom; centralizing here is a transitional convenience until each
+	// of these messages gets a dedicated translation unit.
+	const bool _handlersRegistered = [] {
+		using enum MessageType::Game;
+		auto& registry = MessageHandlerRegistry::Instance();
+		registry.Register<GameMessages::RequestUse>(REQUEST_USE);
+		registry.Register<GameMessages::RequestServerObjectInfo>(REQUEST_SERVER_OBJECT_INFO);
+		registry.Register<GameMessages::ShootingGalleryFire>(SHOOTING_GALLERY_FIRE);
+		registry.Register<GameMessages::PickupItem>(PICKUP_ITEM);
+		return true;
+	}();
+}
 
 void GameMessageHandler::HandleMessage(RakNet::BitStream& inStream, const SystemAddress& sysAddr, LWOOBJID objectID, MessageType::Game messageID) {
 
@@ -68,9 +74,8 @@ void GameMessageHandler::HandleMessage(RakNet::BitStream& inStream, const System
 
 	if (messageID != MessageType::Game::READY_FOR_UPDATES) LOG_DEBUG("Received GM with ID and name: %4i, %s", messageID, StringifiedEnum::ToString(messageID).data());
 
-	auto handler = g_MessageHandlers.find(messageID);
-	if (handler != g_MessageHandlers.end()) {
-		auto msg = handler->second();
+	if (const auto* factory = MessageHandlerRegistry::Instance().Lookup(messageID)) {
+		auto msg = (*factory)();
 
 		// Verify that the system address user is able to use this message.
 		if (msg->requiredGmLevel > eGameMasterLevel::CIVILIAN) {
