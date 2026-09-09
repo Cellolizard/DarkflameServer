@@ -617,12 +617,15 @@ void Entity::Initialize() {
 
 			if (rebuildResetTime != 0.0f) {
 				quickBuildComponent->SetResetTime(rebuildResetTime);
+			}
 
-				// Known bug with moving platform in FV that casues it to build at the end instead of the start.
-				// This extends the smash time so players can ride up the lift.
-				if (m_TemplateID == 9483) {
-					quickBuildComponent->SetResetTime(quickBuildComponent->GetResetTime() + 25);
-				}
+			// FV Great Tree platform (LOT 9483): resync so the client starts at the lower path point.
+			if (GetLOT() == 9483) {
+				const auto objectID = GetObjectID();
+				quickBuildComponent->AddQuickBuildCompleteCallback([objectID](Entity* user) {
+					auto* const entity = Game::entityManager->GetEntity(objectID);
+					if (entity) GameMessages::SendPlatformResync(entity, UNASSIGNED_SYSTEM_ADDRESS, false, 0, 1, 1, eMovementPlatformState::Moving, true);
+				});
 			}
 
 			const auto activityID = GetVar<int32_t>(u"activityID");
