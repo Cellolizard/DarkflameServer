@@ -357,18 +357,18 @@ void GameMessages::SendResetMissions(Entity* entity, const SystemAddress& sysAdd
 
 void GameMessages::SendPlatformResync(Entity* entity, const SystemAddress& sysAddr, bool bStopAtDesiredWaypoint,
 	int iIndex, int iDesiredWaypointIndex, int nextIndex,
-	eMovementPlatformState movementState) {
+	eMovementPlatformState movementState, bool special) {
 	CBITSTREAM;
 	CMSGHEADER;
 
 	const auto lot = entity->GetLOT();
 
-	if (lot == 12341 || lot == 5027 || lot == 5028 || lot == 14335 || lot == 14447 || lot == 14449 || lot == 11306 || lot == 11308) {
+	if (lot == 12341 || lot == 5027 || lot == 5028 || lot == 14335 || lot == 14447 || lot == 14449 || lot == 11306 || lot == 11308 || lot == 9483) {
 		iDesiredWaypointIndex = (lot == 11306 || lot == 11308) ? 1 : 0;
-		iIndex = 0;
-		nextIndex = 0;
+		iIndex = lot == 9483 ? 1 : 0;
+		nextIndex = lot == 9483 && !special ? 1 : 0;
 		bStopAtDesiredWaypoint = true;
-		movementState = eMovementPlatformState::Stationary;
+		movementState = lot == 9483 && !special ? eMovementPlatformState::Stopped : eMovementPlatformState::Stationary;
 	}
 
 	bitStream.Write(entity->GetObjectID());
