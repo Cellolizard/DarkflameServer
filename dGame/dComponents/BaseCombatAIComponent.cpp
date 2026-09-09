@@ -344,7 +344,7 @@ void BaseCombatAIComponent::CalculateCombat(const float deltaTime) {
 			continue;
 		}
 
-		const auto result = skillComponent->CalculateBehavior(entry.skillId, entry.behavior->m_behaviorId, LWOOBJID_EMPTY);
+		const auto result = skillComponent->CalculateBehavior(entry.skillId, entry.behavior->m_behaviorId, GetTarget());
 
 		if (result.success) {
 			if (m_MovementAI != nullptr) {
