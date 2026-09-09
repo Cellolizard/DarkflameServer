@@ -8,6 +8,9 @@ public:
 
 	float m_npcSkillTime;
 
+	float m_minRange{};
+	float m_maxRange{};
+
 	/*
 	 * Inherited
 	 */
