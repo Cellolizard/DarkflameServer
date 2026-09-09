@@ -300,3 +300,21 @@ TEST_F(BaseCombatAITest, ComponentIsRetrievableFromEntity) {
 TEST_F(BaseCombatAITest, HasComponentReturnsTrueForCombatAI) {
 	EXPECT_TRUE(baseEntity->HasComponent(eReplicaComponentType::BASE_COMBAT_AI));
 }
+
+// SetStartingPosition updates the home/tether point used after de-aggro.
+TEST_F(BaseCombatAITest, SetStartingPositionUpdatesHomePoint) {
+	ASSERT_NE(combatAI, nullptr);
+
+	combatAI->SetStartingPosition(NiPoint3(12.0f, 3.5f, -8.0f));
+	const NiPoint3& startPos = combatAI->GetStartPosition();
+	EXPECT_FLOAT_EQ(startPos.x, 12.0f);
+	EXPECT_FLOAT_EQ(startPos.y, 3.5f);
+	EXPECT_FLOAT_EQ(startPos.z, -8.0f);
+}
+
+// Fresh AI is in combat-idle grace, not out-of-combat and not tethering.
+TEST_F(BaseCombatAITest, InitiallyNotOutOfCombatAndNotTethering) {
+	ASSERT_NE(combatAI, nullptr);
+	EXPECT_FALSE(combatAI->GetOutOfCombat());
+	EXPECT_FALSE(combatAI->GetIsTethering());
+}

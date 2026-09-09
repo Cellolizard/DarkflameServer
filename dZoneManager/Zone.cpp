@@ -101,15 +101,32 @@ void Zone::LoadZoneIntoMemory() {
 			m_Paths.reserve(pathCount);
 			for (uint32_t i = 0; i < pathCount; ++i) LoadPath(file);
 
-			for (Path path : m_Paths) {
+			for (const Path& path : m_Paths) {
 				if (path.pathType != PathType::Spawner) continue;
-				SpawnerInfo info = SpawnerInfo();
-				for (PathWaypoint waypoint : path.pathWaypoints) {
+				SpawnerInfo info{};
+				for (size_t i = 0; i < path.pathWaypoints.size(); i++) {
+					const auto& waypoint = path.pathWaypoints[i];
 					SpawnerNode* node = new SpawnerNode();
 					node->position = waypoint.position;
 					node->rotation = waypoint.rotation;
 					node->nodeID = 0;
-					node->config = waypoint.config;
+					node->config = path.pathWaypoints[0].config;
+					// All spawner waypoints get the config data of the first waypoint, but then we
+					// overwrite settings on this waypoint if we have another one defined of the same name
+					if (i != 0) {
+						for (LDFBaseData* overlay : waypoint.config) {
+							if (!overlay) continue;
+							bool replaced = false;
+							for (size_t j = 0; j < node->config.size(); ++j) {
+								if (node->config[j] && node->config[j]->GetKey() == overlay->GetKey()) {
+									node->config[j] = overlay;
+									replaced = true;
+									break;
+								}
+							}
+							if (!replaced) node->config.push_back(overlay);
+						}
+					}
 
 					for (LDFBaseData* data : waypoint.config) {
 						if (!data) continue;
