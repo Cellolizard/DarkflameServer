@@ -111,6 +111,7 @@ public:
 
 	uint16_t GetNetworkId() const;
 
+	// Cannot return nullptr.
 	Entity* GetOwner() const;
 
 	const NiPoint3& GetDefaultPosition() const;

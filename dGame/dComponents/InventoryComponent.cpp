@@ -969,8 +969,9 @@ void InventoryComponent::EquipScripts(Item* equippedItem) {
 		auto* itemScript = CppScripts::GetScript(m_Parent, scriptCompData.script_name);
 		if (!itemScript) {
 			LOG("null script?");
+		} else {
+			itemScript->OnFactionTriggerItemEquipped(m_Parent, equippedItem->GetId());
 		}
-		itemScript->OnFactionTriggerItemEquipped(m_Parent, equippedItem->GetId());
 	}
 }
 
@@ -984,8 +985,9 @@ void InventoryComponent::UnequipScripts(Item* unequippedItem) {
 		auto* itemScript = CppScripts::GetScript(m_Parent, scriptCompData.script_name);
 		if (!itemScript) {
 			LOG("null script?");
+		} else {
+			itemScript->OnFactionTriggerItemUnequipped(m_Parent, unequippedItem->GetId());
 		}
-		itemScript->OnFactionTriggerItemUnequipped(m_Parent, unequippedItem->GetId());
 	}
 }
 
@@ -1685,7 +1687,7 @@ void InventoryComponent::LoadPetXml(const tinyxml2::XMLDocument& document) {
 		DatabasePet databasePet;
 		databasePet.lot = lot;
 		databasePet.moderationState = moderationStatus;
-		databasePet.name = std::string(name);
+		databasePet.name = name ? name : "";
 
 		SetDatabasePet(id, databasePet);
 
