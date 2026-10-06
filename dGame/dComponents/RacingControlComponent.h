@@ -71,6 +71,11 @@ struct RacingPlayerInfo {
 	uint16_t reachedPoints;
 
 	/**
+	 * Order in which this player reached their current plane.
+	 */
+	uint64_t planeReachedOrder = 0;
+
+	/**
 	 * The fastest lap time of the player
 	 */
 	std::chrono::milliseconds bestLapTime;
@@ -244,6 +249,8 @@ private:
 	float m_EmptyTimer;
 
 	bool m_SoloRacing;
+	bool m_BroadcastLiveProgress;
+	uint64_t m_NextPlaneReachedOrder = 0;
 
 	/**
 	 * Value for message box response to know if we are exiting the race via the activity dialogue
