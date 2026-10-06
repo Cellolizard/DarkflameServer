@@ -755,8 +755,6 @@ void RacingControlComponent::Update(float deltaTime) {
 		// new checkpoint
 		const auto previousLap = player.lap;
 		const auto previousPlane = player.respawnIndex;
-		const auto previousRespawnPosition = player.respawnPosition;
-		const auto previousRespawnRotation = player.respawnRotation;
 		uint32_t respawnIndex = 0;
 		for (const auto& waypoint : path->pathWaypoints) {
 			if (player.lap == m_NumberOfLaps) {
@@ -809,9 +807,6 @@ void RacingControlComponent::Update(float deltaTime) {
 
 				// Cheating check
 				if (lapTime.count() < 40000) {
-					player.respawnIndex = previousPlane;
-					player.respawnPosition = previousRespawnPosition;
-					player.respawnRotation = previousRespawnRotation;
 					continue;
 				}
 
