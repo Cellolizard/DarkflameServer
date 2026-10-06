@@ -3,6 +3,7 @@
  */
 
 #include "RacingControlComponent.h"
+#include "RacingProgress.h"
 
 #include "CharacterComponent.h"
 #include "DestroyableComponent.h"
@@ -27,6 +28,7 @@
 #include "CDActivitiesTable.h"
 #include "eStateChangeType.h"
 #include <ctime>
+#include <utility>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846264338327950288
@@ -48,6 +50,7 @@ RacingControlComponent::RacingControlComponent(Entity* parent, const int32_t com
 	m_Finished = 0;
 	m_EmptyTimer = 0;
 	m_SoloRacing = Game::config->GetValue("solo_racing") == "1";
+	m_BroadcastLiveProgress = Game::config->GetValue("disable_live_race_progress") != "1";
 
 	m_MainWorld = 1200;
 	const auto worldID = Game::server->GetZoneID();
@@ -750,6 +753,10 @@ void RacingControlComponent::Update(float deltaTime) {
 
 		// Loop through all the waypoints and see if the player has reached a
 		// new checkpoint
+		const auto previousLap = player.lap;
+		const auto previousPlane = player.respawnIndex;
+		const auto previousRespawnPosition = player.respawnPosition;
+		const auto previousRespawnRotation = player.respawnRotation;
 		uint32_t respawnIndex = 0;
 		for (const auto& waypoint : path->pathWaypoints) {
 			if (player.lap == m_NumberOfLaps) {
@@ -802,6 +809,9 @@ void RacingControlComponent::Update(float deltaTime) {
 
 				// Cheating check
 				if (lapTime.count() < 40000) {
+					player.respawnIndex = previousPlane;
+					player.respawnPosition = previousRespawnPosition;
+					player.respawnRotation = previousRespawnRotation;
 					continue;
 				}
 
@@ -865,6 +875,33 @@ void RacingControlComponent::Update(float deltaTime) {
 
 			LOG("Reached point (%i)/(%i)", player.respawnIndex,
 				path->pathWaypoints.size());
+
+			if (previousLap != player.lap || previousPlane != player.respawnIndex) {
+				player.planeReachedOrder = ++m_NextPlaneReachedOrder;
+				if (ShouldBroadcastRacingProgress(m_BroadcastLiveProgress,
+					player.finished != 0 || player.lap >= m_NumberOfLaps,
+					previousLap, previousPlane, player.lap, player.respawnIndex)) {
+					GameMessages::SendRacingSetPlayerResetInfo(
+						m_Parent->GetObjectID(), player.lap, player.respawnIndex,
+						player.playerID, player.respawnPosition, player.respawnIndex + 1,
+						UNASSIGNED_SYSTEM_ADDRESS);
+				}
+
+				std::vector<RacingProgress> progress;
+				progress.reserve(m_RacingPlayers.size());
+				for (const auto& racer : m_RacingPlayers) {
+					progress.push_back({ racer.playerID, racer.finished, racer.lap,
+						racer.respawnIndex, racer.planeReachedOrder });
+				}
+				const auto standings = OrderRacingProgress(std::move(progress));
+				for (size_t place = 0; place < standings.size(); ++place) {
+					if (standings[place].playerID == player.playerID) {
+						LOG_DEBUG("Racing progress: player %llu, place %zu, lap %u, plane %u",
+							player.playerID, place + 1, player.lap, player.respawnIndex);
+						break;
+					}
+				}
+			}
 
 			break;
 		}
