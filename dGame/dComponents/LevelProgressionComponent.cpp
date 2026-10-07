@@ -2,9 +2,22 @@
 #include "ControllablePhysicsComponent.h"
 #include "InventoryComponent.h"
 #include "CharacterComponent.h"
+#include "Game.h"
+#include "GeneralUtils.h"
+#include "dConfig.h"
 #include "tinyxml2.h"
 
 #include "CDRewardsTable.h"
+
+#include <algorithm>
+#include <limits>
+
+namespace {
+	uint32_t GetExtraBackpackSlotsPerLevel() {
+		if (Game::config->GetValue("disable_extra_backpack") == "1") return 0;
+		return GeneralUtils::TryParse<uint32_t>(Game::config->GetValue("extra_backpack_slots_per_level")).value_or(2);
+	}
+}
 
 LevelProgressionComponent::LevelProgressionComponent(Entity* parent, const int32_t componentID) : Component(parent, componentID) {
 	m_Parent = parent;
@@ -78,6 +91,15 @@ void LevelProgressionComponent::HandleLevelUp() {
 			break;
 		}
 	}
+
+	const auto extraSlots = GetExtraBackpackSlotsPerLevel();
+	auto* items = inventoryComponent->GetInventory(eInventoryType::ITEMS);
+	if (extraSlots > 0 && items) {
+		const auto size = items->GetSize();
+		const auto maxSize = static_cast<uint32_t>(std::numeric_limits<int32_t>::max());
+		if (size < maxSize) items->SetSize(size + std::min(extraSlots, maxSize - size));
+	}
+
 	// Tell the client we have finished sending level rewards.
 	if (rewardingItem) GameMessages::NotifyLevelRewards(m_Parent->GetObjectID(), m_Parent->GetSystemAddress(), m_Level, !rewardingItem);
 }
