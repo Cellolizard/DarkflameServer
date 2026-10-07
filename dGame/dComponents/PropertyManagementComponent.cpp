@@ -290,9 +290,9 @@ void PropertyManagementComponent::OnFinishBuilding() {
 
 	if (ownerEntity == nullptr) return;
 
-	SetPrivacyOption(originalPrivacyOption);
-
 	UpdateApprovedStatus(false);
+
+	SetPrivacyOption(originalPrivacyOption);
 
 	Save();
 
