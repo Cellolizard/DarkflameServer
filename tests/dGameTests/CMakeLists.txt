@@ -1,5 +1,6 @@
 set(DGAMETEST_SOURCES
 	"GameDependencies.cpp"
+	"VanityUtilitiesTests.cpp"
 )
 
 add_subdirectory(dComponentsTests)
@@ -33,8 +34,13 @@ endif()
 target_link_libraries(dGameTests ${COMMON_LIBRARIES} GTest::gtest_main
 	dGame dScripts dPhysics Detour Recast tinyxml2 dWorldServer dZoneManager dChatFilter dNavigation)
 
+target_include_directories(dGameTests PRIVATE
+	"${CMAKE_SOURCE_DIR}/dScripts"
+	"${CMAKE_SOURCE_DIR}/dScripts/02_server/Map/General")
+
 target_compile_definitions(dGameTests PRIVATE
-	CDCLIENT_TEST_PATH="${CMAKE_SOURCE_DIR}/resServer/CDServer.sqlite")
+	CDCLIENT_TEST_PATH="${CMAKE_SOURCE_DIR}/resServer/CDServer.sqlite"
+	VANITY_TEST_PATH="${CMAKE_SOURCE_DIR}/vanity")
 
 # Discover the tests. DISCOVERY_MODE PRE_TEST defers gtest's enumeration step
 # from build time to ctest time. Without this, a sanitizer build (the `asan`

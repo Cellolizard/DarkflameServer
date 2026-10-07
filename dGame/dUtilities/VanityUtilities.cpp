@@ -25,12 +25,11 @@
 
 namespace {
 	std::vector<VanityObject> objects;
-	std::set<std::string> loadedFiles;
 }
 
 void SetupNPCTalk(Entity* npc);
 void NPCTalk(Entity* npc);
-void ParseXml(const std::string& file);
+void ParseXml(const std::filesystem::path& file, uint32_t currentZoneID, std::vector<VanityObject>& parsedObjects, std::set<std::string>& loadedFiles);
 LWOOBJID SpawnSpawner(const VanityObject& object, const VanityObjectLocation& location);
 Entity* SpawnObject(const VanityObject& object, const VanityObjectLocation& location);
 VanityObject* GetObject(const std::string& name);
@@ -69,9 +68,7 @@ void VanityUtilities::SpawnVanity() {
 	}
 
 	objects.clear();
-	loadedFiles.clear();
-
-	ParseXml((BinaryPathFinder::GetBinaryDir() / "vanity/root.xml").string());
+	objects = ParseVanity(BinaryPathFinder::GetBinaryDir() / "vanity/root.xml", zoneID);
 
 	// Loop through all objects
 	for (auto& object : objects) {
@@ -145,12 +142,20 @@ Entity* SpawnObject(const VanityObject& object, const VanityObjectLocation& loca
 	return entity;
 }
 
-void ParseXml(const std::string& file) {
-	if (loadedFiles.contains(file)) {
-		LOG("Trying to load vanity file %s twice!!!", file.c_str());
+std::vector<VanityObject> VanityUtilities::ParseVanity(const std::filesystem::path& rootFile, uint32_t zoneID) {
+	std::vector<VanityObject> parsedObjects;
+	std::set<std::string> loadedFiles;
+	ParseXml(rootFile, zoneID, parsedObjects, loadedFiles);
+	return parsedObjects;
+}
+
+void ParseXml(const std::filesystem::path& file, uint32_t currentZoneID, std::vector<VanityObject>& parsedObjects, std::set<std::string>& loadedFiles) {
+	const std::string fileName = file.string();
+	if (loadedFiles.contains(fileName)) {
+		LOG("Trying to load vanity file %s twice!!!", fileName.c_str());
 		return;
 	}
-	loadedFiles.insert(file);
+	loadedFiles.insert(fileName);
 	// Read the entire file
 	std::ifstream xmlFile(file);
 	std::string xml((std::istreambuf_iterator<char>(xmlFile)), std::istreambuf_iterator<char>());
@@ -162,19 +167,18 @@ void ParseXml(const std::string& file) {
 	// Read the objects
 	auto* files = doc.FirstChildElement("files");
 	if (files) {
-		for (auto* file = files->FirstChildElement("file"); file != nullptr; file = file->NextSiblingElement("file")) {
-			std::string enabled = file->Attribute("enabled");
-			std::string filename = file->Attribute("name");
+		for (auto* fileElement = files->FirstChildElement("file"); fileElement != nullptr; fileElement = fileElement->NextSiblingElement("file")) {
+			std::string enabled = fileElement->Attribute("enabled");
+			std::string filename = fileElement->Attribute("name");
 			if (enabled != "1") {
 				continue;
 			}
-			ParseXml((BinaryPathFinder::GetBinaryDir() / "vanity" / filename).string());
+			ParseXml(file.parent_path() / filename, currentZoneID, parsedObjects, loadedFiles);
 		}
 	}
 
 	// Read the objects
 	auto* objectsElement = doc.FirstChildElement("objects");
-	const uint32_t currentZoneID = Game::server->GetZoneID();
 	if (objectsElement) {
 		for (auto* object = objectsElement->FirstChildElement("object"); object != nullptr; object = object->NextSiblingElement("object")) {
 			// for use later when adding to the vector of VanityObjects
@@ -240,8 +244,10 @@ void ParseXml(const std::string& file) {
 					if (!data) continue;
 
 					LDFBaseData* configData = LDFBaseData::DataFromString(data);
+					if (!configData) continue;
 					if (configData->GetKey() == u"useLocationsAsRandomSpawnPoint" && configData->GetValueType() == eLDFType::LDF_TYPE_BOOLEAN) {
-						useLocationsAsRandomSpawnPoint = static_cast<bool>(configData);
+						useLocationsAsRandomSpawnPoint = static_cast<LDFData<bool>*>(configData)->GetValue();
+						delete configData;
 						continue;
 					}
 					keys.push_back(configData->GetKey());
@@ -312,13 +318,13 @@ void ParseXml(const std::string& file) {
 				}
 
 				if (!useLocationsAsRandomSpawnPoint) {
-					objects.push_back(objectData);
+					parsedObjects.push_back(objectData);
 					objectData.m_Locations.clear();
 				}
 			}
 
 			if (useLocationsAsRandomSpawnPoint && !objectData.m_Locations.empty()) {
-				objects.push_back(objectData);
+				parsedObjects.push_back(objectData);
 			}
 		}
 	}

@@ -2,6 +2,7 @@
 
 #include "dCommonVars.h"
 #include "Entity.h"
+#include <filesystem>
 #include <map>
 #include <set>
 
@@ -25,6 +26,7 @@ struct VanityObject {
 
 namespace VanityUtilities {
 	void SpawnVanity();
+	std::vector<VanityObject> ParseVanity(const std::filesystem::path& rootFile, uint32_t zoneID);
 
 	VanityObject* GetObject(const std::string& name);
 
