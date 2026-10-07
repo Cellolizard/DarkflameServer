@@ -16,6 +16,26 @@ std::unique_ptr<AMFBaseValue> ReadFromBitStream(RakNet::BitStream& bitStream) {
 	return deserializer.Read(bitStream);
 }
 
+class AMFDeserializeArrayLimitsTest : public ::testing::Test {
+protected:
+	void SetUp() override { Game::logger = &logger; }
+	void TearDown() override { Game::logger = nullptr; }
+
+	Logger logger{"./testing.log", false, false};
+};
+
+static void WriteAssociativeArray(RakNet::BitStream& bitStream, uint32_t entryCount) {
+	bitStream.Write<uint8_t>(0x09);
+	bitStream.Write<uint8_t>(0x01);
+	for (uint32_t i = 0; i < entryCount; i++) {
+		const auto key = std::to_string(i);
+		bitStream.Write<uint8_t>(key.size() * 2 + 1);
+		for (const auto character : key) bitStream.Write<char>(character);
+		bitStream.Write<uint8_t>(0x01);
+	}
+	bitStream.Write<uint8_t>(0x01);
+}
+
 /**
  * @brief Test reading an AMFUndefined value from a BitStream.
  */
@@ -170,6 +190,31 @@ TEST(dCommonTests, AMFDeserializeAMFArrayTest) {
 		ASSERT_EQ(static_cast<AMFArrayValue*>(res.get())->Get<std::string>("BehaviorID")->GetValue(), "10447");
 		ASSERT_EQ(static_cast<AMFArrayValue*>(res.get())->Get<std::string>(0)->GetValue(), "10447");
 	}
+}
+
+TEST_F(AMFDeserializeArrayLimitsTest, AssociativeArrayOverLimitThrows) {
+	CBITSTREAM;
+	WriteAssociativeArray(bitStream, 10'001);
+	EXPECT_THROW(ReadFromBitStream(bitStream), std::invalid_argument);
+}
+
+TEST_F(AMFDeserializeArrayLimitsTest, AssociativeArrayAtLimitDeserializes) {
+	CBITSTREAM;
+	WriteAssociativeArray(bitStream, 10'000);
+	auto result = ReadFromBitStream(bitStream);
+	ASSERT_EQ(result->GetValueType(), eAmf::Array);
+	EXPECT_EQ(static_cast<AMFArrayValue*>(result.get())->GetAssociative().size(), 10'000);
+}
+
+TEST_F(AMFDeserializeArrayLimitsTest, DenseArrayOverLimitThrowsBeforeAssociativeRead) {
+	CBITSTREAM;
+	bitStream.Write<uint8_t>(0x09);
+	bitStream.Write<uint8_t>(0x81);
+	bitStream.Write<uint8_t>(0x9C);
+	bitStream.Write<uint8_t>(0x23);
+	bitStream.Write<uint8_t>(0x03);
+	EXPECT_THROW(ReadFromBitStream(bitStream), std::invalid_argument);
+	EXPECT_EQ(bitStream.GetReadOffset(), 32u);
 }
 
 /**
