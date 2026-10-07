@@ -1,4 +1,5 @@
 <objects>
+	<!-- ATMs open the player's vault after the stock Vault Account mission. To add a location, use /pos and /rot in game, then add a <location> line below. -->
 	<object lot="13538">
 		<config>
 			<!--Precondition 168 means the player must complete mission 1203 before being able to use an ATM-->
