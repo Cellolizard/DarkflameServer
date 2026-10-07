@@ -4,6 +4,7 @@ set(DCOMPONENTS_TESTS
 	"SimplePhysicsComponentTests.cpp"
 	"SavingTests.cpp"
 	"InventoryComponentTests.cpp"
+	"LevelProgressionComponentTests.cpp"
 	"BuffComponentTests.cpp"
 	"MissionComponentTests.cpp"
 	"QuickBuildComponentTests.cpp"

@@ -5114,16 +5114,6 @@ void GameMessages::HandleNotifyServerLevelProcessingComplete(RakNet::BitStream& 
 
 	levelComp->HandleLevelUp();
 
-	auto* inventoryComponent = entity->GetComponent<InventoryComponent>();
-
-	if (inventoryComponent != nullptr) {
-		auto* inventory = inventoryComponent->GetInventory(ITEMS);
-
-		if (inventory != nullptr && Game::config->GetValue("disable_extra_backpack") != "1") {
-			inventory->SetSize(inventory->GetSize() + 2);
-		}
-	}
-
 	//Play the level up effect:
 	GameMessages::SendPlayFXEffect(entity, 7074, u"create", "7074", LWOOBJID_EMPTY, 1.0f, 1.0f, true);
 
